@@ -17,8 +17,7 @@ export interface IncidentReportSummary {
   status: IncidentStatus
   created_by_user_id: string
   owning_unit_id: string
-  pmkp_reviewed?: number | boolean
-  [key: string]: unknown
+  pmkp_reviewed?: number | boolean | null
 }
 
 export function canCreateDraft(user: AuthenticatedUser): boolean {
@@ -44,12 +43,9 @@ export function canReadReport(user: AuthenticatedUser, report: IncidentReportSum
   }
 
   // Non-draft submitted reports: Nakes IBS can view other Nakes IBS reports (read-only)
+  // Administrators can view administrative metadata, but clinical narrative is stripped
   if (report.owning_unit_id === "IBS") {
-    return (
-      user.role === "TENAGA_KESEHATAN" ||
-      user.role === "KEPALA_RUANGAN" ||
-      user.role === "KOMITE_PMKP"
-    )
+    return true
   }
 
   return false

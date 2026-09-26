@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { existsSync, rmSync } from "node:fs"
+import { existsSync, readdirSync, rmSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -12,12 +12,7 @@ const stateName =
   process.env.D1_PROD_STATE ?? (isDirectExecution ? "local-dev" : `test-${String(process.pid)}`)
 const persistDirectory = path.join(projectRoot, ".wrangler", "state", "v3", "d1", stateName)
 
-const migrationFile = path.join(
-  projectRoot,
-  "database",
-  "migrations",
-  "0001_initial_production_schema.sql",
-)
+const migrationsDir = path.join(projectRoot, "database", "migrations")
 const seedFile = path.join(projectRoot, "database", "seeds", "0001_initial_seed.sql")
 const wranglerExecutable = path.join(projectRoot, "node_modules", "wrangler", "bin", "wrangler.js")
 const wranglerConfig = path.join(projectRoot, "wrangler.jsonc")
@@ -58,7 +53,13 @@ export function teardownProductionDatabase(): void {
 }
 
 export function applyProductionMigrations(): void {
-  executeFile(migrationFile)
+  const files = readdirSync(migrationsDir)
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+
+  for (const file of files) {
+    executeFile(path.join(migrationsDir, file))
+  }
 }
 
 export function seedProductionDatabase(): void {

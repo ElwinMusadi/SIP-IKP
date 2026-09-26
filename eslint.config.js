@@ -46,7 +46,7 @@ export default defineConfig([
       ...reactHooks.configs.flat.recommended.rules,
       "react-refresh/only-export-components": [
         "warn",
-        { allowConstantExport: true, allowExportNames: ["buttonVariants"] },
+        { allowConstantExport: true, allowExportNames: ["buttonVariants", "badgeVariants"] },
       ],
     },
   },
