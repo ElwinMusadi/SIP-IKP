@@ -1,0 +1,440 @@
+openapi: 3.1.0
+info:
+  title: SIP-IKP Authentication and Identity API
+  version: 0.1.0
+  description: >
+    Candidate OpenAPI specification for Identity, Authentication, and Session Management
+    in Sistem Informasi Pelaporan Insiden Keselamatan Pasien (IKP) IBS RSUD Prof. Dr. W. Z. Johannes Kupang.
+    STATUS: PROVISIONAL / CANDIDATE ONLY — NOT AN ACTIVE PRODUCTION CONTRACT.
+servers:
+  - url: /api/v1
+    description: Current origin edge API gateway
+
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user and establish session
+      description: Validates staff username/NIP and password, sets HttpOnly session cookie, and returns user profile.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authentication successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "__Host-session_id=token_128bit; Secure; HttpOnly; SameSite=Strict; Path=/"
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccessResponse"
+        "400":
+          $ref: "#/components/responses/ProblemDetails400"
+        "401":
+          $ref: "#/components/responses/ProblemDetails401"
+        "429":
+          $ref: "#/components/responses/ProblemDetails429"
+
+  /auth/logout:
+    post:
+      summary: Invalidate active session
+      description: Revokes the session record in D1 and clears the session cookie.
+      operationId: logout
+      security:
+        - CookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      responses:
+        "200":
+          description: Session terminated successfully
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "__Host-session_id=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      loggedOut:
+                        type: boolean
+                        example: true
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/ProblemDetails401"
+        "403":
+          $ref: "#/components/responses/ProblemDetails403"
+
+  /auth/session:
+    get:
+      summary: Inspect current session status
+      description: Returns profile, role, unit, and remaining idle timeout for active session.
+      operationId: getSession
+      security:
+        - CookieAuth: []
+      responses:
+        "200":
+          description: Session is active
+          headers:
+            X-Request-ID:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccessResponse"
+        "401":
+          $ref: "#/components/responses/ProblemDetails401"
+
+  /auth/session/revoke:
+    post:
+      summary: Revoke session(s)
+      description: Revokes specific session or all active sessions for a target user.
+      operationId: revokeSession
+      security:
+        - CookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId]
+              properties:
+                targetUserId:
+                  type: string
+                revokeAll:
+                  type: boolean
+                  default: false
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Sessions revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      revokedCount:
+                        type: integer
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "401":
+          $ref: "#/components/responses/ProblemDetails401"
+        "403":
+          $ref: "#/components/responses/ProblemDetails403"
+
+  /auth/password/change:
+    post:
+      summary: Change password for active user
+      description: Validates current password and updates password hash, revoking other active sessions.
+      operationId: changePassword
+      security:
+        - CookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfTokenHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "200":
+          description: Password updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      passwordChanged:
+                        type: boolean
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/ProblemDetails400"
+        "401":
+          $ref: "#/components/responses/ProblemDetails401"
+        "422":
+          $ref: "#/components/responses/ProblemDetails422"
+
+  /auth/password/reset/request:
+    post:
+      summary: Request password reset token
+      description: Initiates recovery; returns uniform message regardless of identifier existence.
+      operationId: requestPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier]
+              properties:
+                identifier:
+                  type: string
+      responses:
+        "200":
+          description: Uniform reset request acknowledgment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "429":
+          $ref: "#/components/responses/ProblemDetails429"
+
+  /auth/password/reset/complete:
+    post:
+      summary: Complete password reset with token
+      description: Sets new password using single-use cryptographic recovery token.
+      operationId: completePasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetCompleteRequest"
+      responses:
+        "200":
+          description: Password reset completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      resetCompleted:
+                        type: boolean
+                  meta:
+                    $ref: "#/components/schemas/ResponseMeta"
+        "400":
+          $ref: "#/components/responses/ProblemDetails400"
+        "401":
+          $ref: "#/components/responses/ProblemDetails401"
+        "422":
+          $ref: "#/components/responses/ProblemDetails422"
+
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: __Host-session_id
+
+  parameters:
+    CsrfTokenHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Synchronizer anti-CSRF token issued during login/session verification
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "198501152010011002"
+        password:
+          type: string
+          format: password
+          example: "ClinicalPassphrase#2026"
+        rememberMe:
+          type: boolean
+          default: false
+
+    PasswordChangeRequest:
+      type: object
+      required: [currentPassword, newPassword, confirmNewPassword]
+      properties:
+        currentPassword:
+          type: string
+          format: password
+        newPassword:
+          type: string
+          format: password
+          minLength: 12
+        confirmNewPassword:
+          type: string
+          format: password
+
+    PasswordResetCompleteRequest:
+      type: object
+      required: [token, newPassword, confirmNewPassword]
+      properties:
+        token:
+          type: string
+        newPassword:
+          type: string
+          format: password
+          minLength: 12
+        confirmNewPassword:
+          type: string
+          format: password
+
+    AuthSuccessResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [user, session]
+          properties:
+            user:
+              $ref: "#/components/schemas/UserProfile"
+            session:
+              $ref: "#/components/schemas/SessionInfo"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+
+    UserProfile:
+      type: object
+      required: [id, username, displayName, role, unit]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [TENAGA_KESEHATAN, KEPALA_RUANGAN, KOMITE_PMKP, ADMINISTRATOR]
+        unit:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+
+    SessionInfo:
+      type: object
+      required: [idleExpiresInSeconds, csrfToken]
+      properties:
+        idleExpiresInSeconds:
+          type: integer
+          example: 900
+        absoluteExpiresInSeconds:
+          type: integer
+          example: 28800
+        csrfToken:
+          type: string
+
+    ResponseMeta:
+      type: object
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+
+    ProblemDetails:
+      type: object
+      required: [type, title, status, code, detail, instance, requestId]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        code:
+          type: string
+        detail:
+          type: string
+        instance:
+          type: string
+        requestId:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            required: [path, code, message]
+            properties:
+              path:
+                type: string
+              code:
+                type: string
+              message:
+                type: string
+
+  responses:
+    ProblemDetails400:
+      description: Bad request syntax or validation failure
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+    ProblemDetails401:
+      description: Authentication missing, invalid, or session expired
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+    ProblemDetails403:
+      description: Access forbidden or CSRF validation failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+    ProblemDetails422:
+      description: Unprocessable entity / password policy violation
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
+
+    ProblemDetails429:
+      description: Rate limit or account lockout exceeded
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetails"
