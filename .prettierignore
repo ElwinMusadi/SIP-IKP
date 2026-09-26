@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+.wrangler
+.agents
+.claude
+.cline
+.codex
+.cursor
+.gemini
+.github/skills
+.kilocode
+skills-lock.json
+docs/Form IKP.pdf
+package-lock.json
+test-support/d1/**/*.sql

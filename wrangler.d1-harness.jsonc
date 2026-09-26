@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sip-ikp-phase-03-candidate-harness",
+  "compatibility_date": "2026-09-26",
+  "send_metrics": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sip-ikp-phase-03-candidate-harness",
+      "migrations_dir": "./test-support/d1/candidate",
+    },
+  ],
+}

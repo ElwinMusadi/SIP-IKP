@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sip-ikp",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-09-26",
+  "send_metrics": false,
+  "vars": {
+    "APP_ENV": "development",
+  },
+}
