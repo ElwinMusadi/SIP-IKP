@@ -66,7 +66,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["test-support/**/*.ts"],
+    files: ["test-support/**/*.ts", "database/**/*.ts"],
     extends: [js.configs.recommended, ...tseslint.configs.strictTypeChecked],
     languageOptions: {
       ecmaVersion: "latest",

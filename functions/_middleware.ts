@@ -2,6 +2,8 @@ import type { CloudflareEnv } from "../src/types/cloudflare-env"
 import { createSafeLogRecord } from "./_shared/log-redaction"
 import type { RequestContextData } from "./_shared/request-context"
 import { REQUEST_ID_HEADER, resolveRequestId } from "./_shared/request-id"
+import { problemResponse } from "./_shared/response"
+import { CSRF_HEADER_NAME, parseSessionCookie, validateSession } from "./_shared/session"
 
 const securityHeaders: Record<string, string> = {
   "Content-Security-Policy":
@@ -12,14 +14,60 @@ const securityHeaders: Record<string, string> = {
   "X-Frame-Options": "DENY",
 }
 
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"])
+
 export const onRequest: PagesFunction<CloudflareEnv, string, RequestContextData> = async ({
   data,
+  env,
   next,
   request,
 }) => {
   const requestId = resolveRequestId(request.headers.get(REQUEST_ID_HEADER))
   data.requestId = requestId
   const startedAt = Date.now()
+  const url = new URL(request.url)
+
+  // 1. Resolve session from cookie if present
+  let auth = data.auth ?? null
+  if (!auth) {
+    const sessionToken = parseSessionCookie(request)
+    if (sessionToken) {
+      try {
+        auth = await validateSession(env.DB, sessionToken)
+      } catch (error) {
+        console.error(
+          createSafeLogRecord("session.validation_error", requestId, {
+            errorName: error instanceof Error ? error.name : "SessionError",
+          }),
+        )
+      }
+    }
+  }
+  data.auth = auth
+
+  // 2. CSRF Protection for state-changing API endpoints
+  // Login is the public entry point to establish a session, so it does not require a prior CSRF token
+  const isPublicAuthEndpoint = url.pathname === "/api/auth/login"
+  if (
+    url.pathname.startsWith("/api/") &&
+    UNSAFE_METHODS.has(request.method) &&
+    !isPublicAuthEndpoint &&
+    auth !== null
+  ) {
+    const providedCsrfToken = request.headers.get(CSRF_HEADER_NAME)
+    if (!providedCsrfToken || providedCsrfToken !== auth.session.csrfToken) {
+      return problemResponse(
+        {
+          status: 403,
+          code: "CSRF_TOKEN_INVALID",
+          title: "Token CSRF Tidak Valid",
+          detail: "Permintaan ditolak karena token anti-CSRF tidak valid atau tidak disertakan.",
+          instance: url.pathname,
+        },
+        requestId,
+      )
+    }
+  }
 
   let response: Response
 
@@ -29,7 +77,7 @@ export const onRequest: PagesFunction<CloudflareEnv, string, RequestContextData>
     console.error(
       createSafeLogRecord("request.unhandled_error", requestId, {
         method: request.method,
-        path: new URL(request.url).pathname,
+        path: url.pathname,
         errorName: error instanceof Error ? error.name : "UnknownError",
       }),
     )
@@ -51,7 +99,7 @@ export const onRequest: PagesFunction<CloudflareEnv, string, RequestContextData>
   console.info(
     createSafeLogRecord("request.completed", requestId, {
       method: request.method,
-      path: new URL(request.url).pathname,
+      path: url.pathname,
       status: securedResponse.status,
       durationMs: Date.now() - startedAt,
     }),

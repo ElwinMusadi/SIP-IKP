@@ -24,7 +24,11 @@
     "d1:harness:reset": "node --experimental-strip-types test-support/d1/harness.ts reset",
     "d1:harness:seed": "node --experimental-strip-types test-support/d1/harness.ts seed",
     "d1:harness:teardown": "node --experimental-strip-types test-support/d1/harness.ts teardown",
-    "d1:harness:validate": "node --experimental-strip-types test-support/d1/harness.ts validate"
+    "d1:harness:validate": "node --experimental-strip-types test-support/d1/harness.ts validate",
+    "d1:migrate": "node --experimental-strip-types database/d1-manager.ts migrate",
+    "d1:seed": "node --experimental-strip-types database/d1-manager.ts seed",
+    "d1:reset": "node --experimental-strip-types database/d1-manager.ts reset",
+    "d1:validate": "node --experimental-strip-types database/d1-manager.ts validate"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

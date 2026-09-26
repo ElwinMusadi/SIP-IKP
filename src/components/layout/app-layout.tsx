@@ -1,17 +1,27 @@
-import { IconHeartbeat, IconMenu2, IconShieldCheck } from "@tabler/icons-react"
-import { NavLink, Outlet } from "react-router"
+import {
+  IconHeartbeat,
+  IconLogin,
+  IconLogout,
+  IconMenu2,
+  IconShieldCheck,
+} from "@tabler/icons-react"
+import { Link, NavLink, Outlet } from "react-router"
 
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/lib/use-auth"
 import { cn } from "@/lib/utils"
 
-const navigation = [
-  { label: "Beranda", to: "/" },
-  { label: "Status fondasi", to: "/fondasi" },
-]
-
 export function AppLayout() {
+  const { user, logout } = useAuth()
+
+  const navigation = [
+    { label: "Beranda", to: "/" },
+    ...(user ? [{ label: "Laporan Insiden", to: "/laporan" }] : []),
+    { label: "Status Fondasi", to: "/fondasi" },
+  ]
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       <a
         className="sr-only fixed top-3 left-3 z-50 rounded-md bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only"
         href="#konten-utama"
@@ -24,7 +34,7 @@ export function AppLayout() {
           <NavLink className="flex min-w-0 items-center gap-3" to="/">
             <span
               aria-hidden="true"
-              className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+              className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs"
             >
               <IconHeartbeat />
             </span>
@@ -55,6 +65,33 @@ export function AppLayout() {
             ))}
           </nav>
 
+          <div className="hidden items-center gap-3 sm:flex">
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col text-right text-xs">
+                  <span className="font-semibold text-foreground">{user.fullName}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {user.role} &bull; {user.unitId}
+                  </span>
+                </div>
+                <Button
+                  className="gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={() => void logout()}
+                  size="sm"
+                  variant="outline"
+                >
+                  <IconLogout className="size-3.5" />
+                  <span>Keluar</span>
+                </Button>
+              </div>
+            ) : (
+              <Button className="gap-1.5 font-medium" render={<Link to="/login" />} size="sm">
+                <IconLogin className="size-4" />
+                <span>Masuk Staf</span>
+              </Button>
+            )}
+          </div>
+
           <Button aria-label="Buka navigasi" className="sm:hidden" size="icon" variant="outline">
             <IconMenu2 />
           </Button>
@@ -67,10 +104,12 @@ export function AppLayout() {
 
       <footer className="border-t bg-card">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <p>Fondasi pengembangan — belum memuat data atau alur klinis.</p>
+          <p>
+            Fondasi autentikasi &amp; data operasional IBS RSUD Prof. Dr. W. Z. Johannes Kupang.
+          </p>
           <p className="flex items-center gap-2">
-            <IconShieldCheck aria-hidden="true" className="size-4" />
-            Keamanan dan akses akan diterapkan pada fase khusus.
+            <IconShieldCheck aria-hidden="true" className="size-4 text-primary" />
+            <span>Kerahasiaan data medis dilindungi RBAC &amp; jejak audit.</span>
           </p>
         </div>
       </footer>
