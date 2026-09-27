@@ -45,27 +45,42 @@ export const onRequest: PagesFunction<CloudflareEnv, string, RequestContextData>
   }
   data.auth = auth
 
-  // 2. CSRF Protection for state-changing API endpoints
+  // 2. CSRF & Origin Protection for state-changing API endpoints
   // Login is the public entry point to establish a session, so it does not require a prior CSRF token
   const isPublicAuthEndpoint = url.pathname === "/api/auth/login"
   if (
     url.pathname.startsWith("/api/") &&
     UNSAFE_METHODS.has(request.method) &&
-    !isPublicAuthEndpoint &&
-    auth !== null
+    !isPublicAuthEndpoint
   ) {
-    const providedCsrfToken = request.headers.get(CSRF_HEADER_NAME)
-    if (!providedCsrfToken || providedCsrfToken !== auth.session.csrfToken) {
+    const originHeader = request.headers.get("Origin")
+    if (originHeader && originHeader !== url.origin) {
       return problemResponse(
         {
           status: 403,
-          code: "CSRF_TOKEN_INVALID",
-          title: "Token CSRF Tidak Valid",
-          detail: "Permintaan ditolak karena token anti-CSRF tidak valid atau tidak disertakan.",
+          code: "CROSS_ORIGIN_FORBIDDEN",
+          title: "Akses Lintas Asal Ditolak",
+          detail: "Permintaan modifikasi data lintas asal (cross-origin) tidak diizinkan.",
           instance: url.pathname,
         },
         requestId,
       )
+    }
+
+    if (auth !== null) {
+      const providedCsrfToken = request.headers.get(CSRF_HEADER_NAME)
+      if (!providedCsrfToken || providedCsrfToken !== auth.session.csrfToken) {
+        return problemResponse(
+          {
+            status: 403,
+            code: "CSRF_TOKEN_INVALID",
+            title: "Token CSRF Tidak Valid",
+            detail: "Permintaan ditolak karena token anti-CSRF tidak valid atau tidak disertakan.",
+            instance: url.pathname,
+          },
+          requestId,
+        )
+      }
     }
   }
 
@@ -92,7 +107,13 @@ export const onRequest: PagesFunction<CloudflareEnv, string, RequestContextData>
 
   securedResponse.headers.set(REQUEST_ID_HEADER, requestId)
 
-  if (securedResponse.headers.get("Content-Type")?.includes("text/html")) {
+  if (url.protocol === "https:") {
+    securedResponse.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+  }
+
+  if (url.pathname.startsWith("/api/")) {
+    securedResponse.headers.set("Cache-Control", "no-store, private")
+  } else if (securedResponse.headers.get("Content-Type")?.includes("text/html")) {
     securedResponse.headers.set("Cache-Control", "no-store")
   }
 

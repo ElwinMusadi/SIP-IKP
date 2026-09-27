@@ -28,6 +28,10 @@ describe("baseline application log redaction", () => {
           patientName: "PATIENT-TEST-001",
           medicalRecordNumber: "MR-TEST-001",
           chronology: "SYNTHETIC INCIDENT NARRATIVE",
+          immediateActionAndResult: "Tindakan stabilisasi darurat",
+          highRiskMitigationNotes: "Mitigasi awal",
+          directCause: "Penyebab langsung",
+          underlyingRootCause: "Akar masalah",
         },
         attachment: {
           objectKey: "private/test-object",
@@ -38,6 +42,10 @@ describe("baseline application log redaction", () => {
         patientName: "[REDACTED]",
         medicalRecordNumber: "[REDACTED]",
         chronology: "[REDACTED]",
+        immediateActionAndResult: "[REDACTED]",
+        highRiskMitigationNotes: "[REDACTED]",
+        directCause: "[REDACTED]",
+        underlyingRootCause: "[REDACTED]",
       },
       attachment: {
         objectKey: "[REDACTED]",

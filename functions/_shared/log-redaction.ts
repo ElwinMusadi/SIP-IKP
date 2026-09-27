@@ -17,6 +17,10 @@ const sensitiveKeys = new Set([
   "medicalrecordnumber",
   "mrnumber",
   "chronology",
+  "immediateactionandresult",
+  "highriskmitigationnotes",
+  "directcause",
+  "underlyingrootcause",
   "r2storagekey",
   "objectkey",
 ])

@@ -130,4 +130,40 @@ describe("Pages Functions middleware foundation", () => {
     expect(response.status).toBe(200)
     expect(next).toHaveBeenCalled()
   })
+
+  it("rejects cross-origin mutating requests with 403 CROSS_ORIGIN_FORBIDDEN", async () => {
+    const { context, next } = createContext(
+      new Request("https://example.test/api/incidents", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://malicious-attacker.test",
+        },
+      }),
+      Response.json({ success: true }),
+    )
+
+    const response = await onRequest(context)
+
+    expect(response.status).toBe(403)
+    const body: { code?: string } = await response.json()
+    expect(body.code).toBe("CROSS_ORIGIN_FORBIDDEN")
+    expect(next).not.toHaveBeenCalled()
+  })
+
+  it("enforces HSTS and Cache-Control headers on HTTPS API requests", async () => {
+    const { context } = createContext(
+      new Request("https://example.test/api/health"),
+      Response.json({ status: "ok" }),
+    )
+
+    const response = await onRequest(context)
+
+    expect(response.headers.get("Strict-Transport-Security")).toBe(
+      "max-age=31536000; includeSubDomains",
+    )
+    expect(response.headers.get("Cache-Control")).toBe("no-store, private")
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY")
+  })
 })

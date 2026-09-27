@@ -720,7 +720,7 @@ export function IncidentPrintPage() {
             {/* Box 3: Komite PMKP / Status Akhir */}
             <div className="col-span-2 flex flex-col justify-between rounded border border-slate-400 p-2.5 sm:col-span-1 print:border-black">
               <span className="text-[10px] font-bold text-slate-600 print:text-black">
-                Disahkan / Ditutup oleh:
+                Ditutup oleh (Atribusi Penutupan):
               </span>
               <div className="my-3 text-center">
                 <span className="inline-block rounded bg-slate-100 px-2 py-1 text-[9px] font-mono text-slate-700 print:bg-white print:text-black">

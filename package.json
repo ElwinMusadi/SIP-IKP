@@ -17,7 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "preview": "vite preview",
-    "cf:dev": "npm run build && wrangler pages dev dist --d1 DB --r2 R2_BUCKET",
+    "cf:dev": "npm run build && wrangler pages dev dist --d1 DB",
     "cf:validate": "wrangler pages functions build --outdir .wrangler/tmp/functions-build",
     "cf:types": "wrangler types --env-interface CloudflareEnv src/types/cloudflare-env.d.ts",
     "d1:harness:setup": "node --experimental-strip-types test-support/d1/harness.ts setup",
