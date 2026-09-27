@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "sip-ikp-d1",
-      "database_id": "local-sip-ikp-d1",
+      "database_id": "1fb4f6c9-cb7d-4589-81fe-5a6f091982bb",
       "migrations_dir": "./database/migrations",
     },
   ],
