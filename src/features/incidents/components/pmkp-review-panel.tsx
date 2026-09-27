@@ -1,7 +1,11 @@
 import { useState, type SyntheticEvent } from "react"
-import { IconCheck, IconDeviceFloppy, IconFolderShare, IconShieldCheck } from "@tabler/icons-react"
+import { IconDeviceFloppy, IconFolderShare, IconShieldCheck } from "@tabler/icons-react"
 
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Button } from "@/components/ui/button"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Spinner } from "@/components/ui/spinner"
+import { Textarea } from "@/components/ui/textarea"
 import type { IncidentReport } from "../types/incident"
 
 interface PmkpReviewPanelProps {
@@ -51,6 +55,7 @@ export function PmkpReviewPanel({
       await onFinalize()
       setShowConfirmModal(false)
     } catch (err) {
+      setShowConfirmModal(false)
       setErrorMsg(err instanceof Error ? err.message : "Gagal menyelesaikan kasus.")
     } finally {
       setIsFinalizing(false)
@@ -60,48 +65,49 @@ export function PmkpReviewPanel({
   return (
     <section
       aria-labelledby="section-pmkp-title"
-      className="flex flex-col gap-5 rounded-xl border bg-card p-6 shadow-xs"
+      className="flex flex-col gap-4 rounded-xl border-2 border-status-pending-foreground/20 bg-status-pending/[0.04] p-4 sm:p-5"
     >
-      <div className="border-b pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2
-              className="text-lg font-bold tracking-tight text-foreground"
-              id="section-pmkp-title"
-            >
-              Tinjauan Mutu Komite PMKP &amp; Serah Terima RCA
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Pengawasan mutu rumah sakit untuk insiden risiko tinggi (KUNING / MERAH) dan serah
-              terima investigasi komprehensif / RCA eksternal.
-            </p>
-          </div>
-          {isReviewed && (
-            <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              <IconShieldCheck className="size-4" />
-              <span>Tinjauan PMKP &amp; Serah Terima Selesai</span>
-            </div>
-          )}
+      <header className="flex flex-wrap items-start justify-between gap-2 border-b border-status-pending-foreground/15 pb-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground sm:text-base" id="section-pmkp-title">
+            Tinjauan Mutu Komite PMKP &amp; Serah Terima RCA
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Pengawasan mutu untuk insiden risiko tinggi (Kuning/Merah) dan serah terima investigasi
+            komprehensif / RCA.
+          </p>
         </div>
-      </div>
+        {isReviewed && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-status-success px-3 py-1 text-xs font-semibold text-status-success-foreground">
+            <IconShieldCheck className="size-3.5" />
+            Tinjauan selesai
+          </span>
+        )}
+      </header>
 
       {message && (
-        <div className="rounded-lg bg-emerald-50 p-3 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+        <p
+          className="rounded-lg bg-status-success px-3 py-2.5 text-xs font-medium text-status-success-foreground"
+          role="status"
+        >
           {message}
-        </div>
+        </p>
       )}
 
       {errorMsg && (
-        <div className="rounded-lg bg-destructive/10 p-3 text-xs font-medium text-destructive">
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs font-medium text-destructive"
+          role="alert"
+        >
           {errorMsg}
-        </div>
+        </p>
       )}
 
       {/* Catatan Awal Mitigasi Unit */}
       {report.high_risk_mitigation_notes && (
-        <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/20 p-4">
+        <div className="flex flex-col gap-1.5 rounded-lg border bg-card p-4">
           <span className="text-xs font-semibold text-foreground">
-            Catatan Awal Mitigasi dari Kepala Ruangan IBS:
+            Catatan awal mitigasi dari Kepala Ruangan:
           </span>
           <p className="text-xs leading-5 text-muted-foreground whitespace-pre-wrap">
             {report.high_risk_mitigation_notes}
@@ -116,34 +122,28 @@ export function PmkpReviewPanel({
           void handleSaveNotes(e)
         }}
       >
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-foreground" htmlFor="pmkp_notes">
-            Catatan Arahan &amp; Evaluasi Komite PMKP (Opsional)
-          </label>
-          <textarea
-            className="min-h-20 w-full rounded-lg border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+        <Field>
+          <FieldLabel htmlFor="pmkp_notes">
+            Catatan Arahan &amp; Evaluasi Komite PMKP (opsional)
+          </FieldLabel>
+          <Textarea
+            className="min-h-20"
             disabled={!canEditNotes || isReviewed}
             id="pmkp_notes"
             onChange={(e) => {
               setReviewNotes(e.target.value)
             }}
-            placeholder="Tuliskan arahan Komite PMKP terkait investigasi komprehensif atau pembentukan tim RCA..."
+            placeholder="Tuliskan arahan Komite PMKP terkait investigasi komprehensif atau pembentukan tim RCA…"
             rows={3}
             value={reviewNotes}
           />
-        </div>
+        </Field>
 
         {canEditNotes && !isReviewed && (
           <div>
-            <Button
-              className="gap-1.5 text-xs"
-              disabled={isSaving}
-              size="sm"
-              type="submit"
-              variant="outline"
-            >
-              <IconDeviceFloppy className="size-3.5" />
-              <span>{isSaving ? "Menyimpan..." : "Simpan Catatan PMKP"}</span>
+            <Button disabled={isSaving} size="sm" type="submit" variant="outline">
+              {isSaving ? <Spinner data-icon="inline-start" /> : <IconDeviceFloppy data-icon="inline-start" />}
+              {isSaving ? "Menyimpan…" : "Simpan Catatan"}
             </Button>
           </div>
         )}
@@ -151,80 +151,51 @@ export function PmkpReviewPanel({
 
       {/* Action: Finalisasi Serah Terima RCA */}
       {canFinalize && !isReviewed && (
-        <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+        <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
           <div className="flex items-start gap-3">
             <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <IconFolderShare className="size-4" />
             </span>
             <div className="flex flex-col gap-1">
-              <p className="text-xs font-semibold text-foreground">
-                Serah Terima Investigasi Komprehensif / RCA Eksternal
+              <p className="text-xs font-semibold text-foreground sm:text-sm">
+                Serah terima investigasi komprehensif / RCA
               </p>
               <p className="text-xs leading-5 text-muted-foreground">
                 Pelaporan SIP-IKP diselesaikan setelah berkas diserahterimakan ke tim investigasi
-                komprehensif RSUD Prof. Dr. W. Z. Johannes. Pelaksanaan RCA lanjutan berlangsung di
-                luar siklus hidup aplikasi SIP-IKP.
+                komprehensif RSUD Prof. Dr. W. Z. Johannes. RCA lanjutan berlangsung di luar
+                aplikasi ini.
               </p>
             </div>
           </div>
 
           <div>
             <Button
-              className="gap-1.5 font-medium"
+              className="font-medium"
               disabled={isFinalizing}
               onClick={() => {
                 setShowConfirmModal(true)
               }}
               size="sm"
             >
-              <IconCheck className="size-4" />
-              <span>Konfirmasi Serah Terima RCA &amp; Tutup Kasus (COMPLETED)</span>
+              <IconFolderShare data-icon="inline-start" />
+              Serah Terima &amp; Tutup Kasus
             </Button>
           </div>
         </div>
       )}
 
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="flex w-full max-w-md flex-col gap-4 rounded-xl border bg-card p-6 shadow-lg">
-            <div className="flex items-center gap-2 text-primary">
-              <IconFolderShare className="size-6" />
-              <h3 className="text-base font-semibold text-foreground">
-                Konfirmasi Penyelesaian Kasus
-              </h3>
-            </div>
-            <p className="text-xs leading-5 text-muted-foreground">
-              Apakah Anda yakin telah melakukan serah terima investigasi komprehensif / RCA ke
-              Komite PMKP? Status laporan akan menjadi <strong>COMPLETED</strong> dan dikunci secara
-              permanen.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button
-                disabled={isFinalizing}
-                onClick={() => {
-                  setShowConfirmModal(false)
-                }}
-                size="sm"
-                variant="ghost"
-              >
-                Batal
-              </Button>
-              <Button
-                className="gap-1.5"
-                disabled={isFinalizing}
-                onClick={() => {
-                  void handleConfirmFinalize()
-                }}
-                size="sm"
-                variant="default"
-              >
-                {isFinalizing ? "Memproses..." : "Ya, Selesaikan & Tutup Kasus"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        busy={isFinalizing}
+        cancelLabel="Batal"
+        confirmLabel="Ya, Tutup Kasus"
+        description="Pastikan berkas telah diserahterimakan ke tim investigasi komprehensif. Laporan akan berstatus Selesai dan dikunci permanen."
+        onConfirm={() => {
+          void handleConfirmFinalize()
+        }}
+        onOpenChange={setShowConfirmModal}
+        open={showConfirmModal}
+        title="Konfirmasi penyelesaian kasus"
+      />
     </section>
   )
 }

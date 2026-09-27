@@ -2,6 +2,10 @@ import { useState, type SyntheticEvent } from "react"
 import { IconCheck, IconDeviceFloppy, IconPlus, IconTrash } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
+import { Textarea } from "@/components/ui/textarea"
 import type { ActionItem, RecommendationItem, SimpleInvestigation } from "../types/incident"
 
 interface InvestigationWorksheetProps {
@@ -50,6 +54,101 @@ function parseActions(raw?: string | ActionItem[]): ActionItem[] {
     }
   }
   return []
+}
+
+interface ItemRowProps {
+  item: { text: string; responsible: string; target_date: string }
+  index: number
+  idPrefix: string
+  canEdit: boolean
+  canRemove: boolean
+  textLabel: string
+  textPlaceholder: string
+  onUpdate: (index: number, field: "text" | "responsible" | "target_date", value: string) => void
+  onRemove: (index: number) => void
+}
+
+function ItemRow({
+  item,
+  index,
+  idPrefix,
+  canEdit,
+  canRemove,
+  textLabel,
+  textPlaceholder,
+  onUpdate,
+  onRemove,
+}: ItemRowProps) {
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-[11px] font-semibold text-muted-foreground tabular-nums">
+          #{index + 1}
+        </span>
+        {canEdit && canRemove && (
+          <Button
+            aria-label={`Hapus baris ${String(index + 1)}`}
+            className="-mt-1 -mr-1 text-muted-foreground hover:text-destructive"
+            onClick={() => {
+              onRemove(index)
+            }}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <IconTrash className="size-4" />
+          </Button>
+        )}
+      </div>
+      <Field>
+        <FieldLabel className="text-xs" htmlFor={`${idPrefix}-${String(index)}-text`}>
+          {textLabel}
+        </FieldLabel>
+        <Input
+          className="h-10"
+          disabled={!canEdit}
+          id={`${idPrefix}-${String(index)}-text`}
+          onChange={(event) => {
+            onUpdate(index, "text", event.target.value)
+          }}
+          placeholder={textPlaceholder}
+          value={item.text}
+        />
+      </Field>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel className="text-xs" htmlFor={`${idPrefix}-${String(index)}-responsible`}>
+            Penanggung Jawab
+          </FieldLabel>
+          <Input
+            className="h-10"
+            disabled={!canEdit}
+            id={`${idPrefix}-${String(index)}-responsible`}
+            onChange={(event) => {
+              onUpdate(index, "responsible", event.target.value)
+            }}
+            placeholder="Nama / jabatan"
+            value={item.responsible}
+          />
+        </Field>
+        <Field>
+          <FieldLabel className="text-xs" htmlFor={`${idPrefix}-${String(index)}-date`}>
+            Target Tanggal
+          </FieldLabel>
+          <Input
+            className="h-10"
+            disabled={!canEdit}
+            id={`${idPrefix}-${String(index)}-date`}
+            onChange={(event) => {
+              onUpdate(index, "target_date", event.target.value)
+            }}
+            type="date"
+            value={item.target_date}
+          />
+        </Field>
+      </div>
+    </li>
+  )
 }
 
 export function InvestigationWorksheet({
@@ -173,92 +272,95 @@ export function InvestigationWorksheet({
   return (
     <section
       aria-labelledby="section-investigation-title"
-      className="flex flex-col gap-6 rounded-xl border bg-card p-6 shadow-xs"
+      className="flex flex-col gap-4 rounded-xl border bg-card p-4 sm:p-5"
     >
-      <div className="border-b pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2
-              className="text-lg font-bold tracking-tight text-foreground"
-              id="section-investigation-title"
-            >
-              Bagian III: Lembar Kerja Investigasi Sederhana
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Formulir investigasi insiden keselamatan pasien pita BIRU / HIJAU oleh Kepala Ruangan
-              IBS.
-            </p>
-          </div>
-          {investigation?.completed_at && (
-            <div className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              Selesai pada: {new Date(investigation.completed_at).toLocaleString("id-ID")}
-            </div>
-          )}
+      <header className="flex flex-wrap items-start justify-between gap-2 border-b pb-3">
+        <div>
+          <h2
+            className="text-sm font-semibold text-foreground sm:text-base"
+            id="section-investigation-title"
+          >
+            Lembar Kerja Investigasi Sederhana
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Investigasi insiden pita Biru/Hijau oleh Kepala Ruangan IBS.
+          </p>
         </div>
-      </div>
+        {investigation?.completed_at && (
+          <span className="rounded-full bg-status-success px-3 py-1 text-xs font-semibold text-status-success-foreground">
+            Selesai · {new Date(investigation.completed_at).toLocaleString("id-ID")}
+          </span>
+        )}
+      </header>
 
       {feedbackMessage && (
-        <div className="rounded-lg bg-emerald-50 p-3 text-xs font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+        <p
+          className="rounded-lg bg-status-success px-3 py-2.5 text-xs font-medium text-status-success-foreground"
+          role="status"
+        >
           {feedbackMessage}
-        </div>
+        </p>
       )}
 
       {errorMessage && (
-        <div className="rounded-lg bg-destructive/10 p-3 text-xs font-medium text-destructive">
+        <p
+          className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs font-medium text-destructive"
+          role="alert"
+        >
           {errorMessage}
-        </div>
+        </p>
       )}
 
       <form
-        className="flex flex-col gap-6"
+        className="flex flex-col gap-5"
         onSubmit={(e) => {
           void handleCompleteSubmit(e)
         }}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <label className="text-xs font-medium text-foreground" htmlFor="direct_cause">
-              Penyebab Langsung Insiden (Direct Cause) <span className="text-destructive">*</span>
-            </label>
-            <textarea
-              className="min-h-16 w-full rounded-lg border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="direct_cause">
+              Penyebab Langsung (Direct Cause){" "}
+              <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <Textarea
+              className="min-h-16"
               disabled={!canEdit}
               id="direct_cause"
               onChange={(e) => {
                 setDirectCause(e.target.value)
               }}
-              placeholder="Jelaskan faktor langsung yang memicu terjadinya insiden di kamar operasi..."
+              placeholder="Jelaskan faktor langsung yang memicu terjadinya insiden di kamar operasi…"
               rows={2}
               value={directCause}
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <label className="text-xs font-medium text-foreground" htmlFor="underlying_root_cause">
-              Akar Masalah (Underlying / Root Cause) <span className="text-destructive">*</span>
-            </label>
-            <textarea
-              className="min-h-16 w-full rounded-lg border bg-background p-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="underlying_root_cause">
+              Akar Masalah (Root Cause){" "}
+              <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <Textarea
+              className="min-h-16"
               disabled={!canEdit}
               id="underlying_root_cause"
               onChange={(e) => {
                 setRootCause(e.target.value)
               }}
-              placeholder="Jelaskan akar penyebab sistemik atau kegagalan proses yang mendasari insiden..."
+              placeholder="Jelaskan akar penyebab sistemik atau kegagalan proses yang mendasari insiden…"
               rows={2}
               value={rootCause}
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <label
-              className="text-xs font-medium text-foreground"
-              htmlFor="investigation_start_date"
-            >
-              Tanggal Mulai Investigasi <span className="text-destructive">*</span>
-            </label>
-            <input
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+          <Field>
+            <FieldLabel htmlFor="investigation_start_date">
+              Tanggal Mulai Investigasi{" "}
+              <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <Input
+              className="h-10"
               disabled={!canEdit}
               id="investigation_start_date"
               onChange={(e) => {
@@ -267,14 +369,15 @@ export function InvestigationWorksheet({
               type="date"
               value={startDate}
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="investigation_end_date">
-              Tanggal Selesai Investigasi <span className="text-destructive">*</span>
-            </label>
-            <input
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+          <Field>
+            <FieldLabel htmlFor="investigation_end_date">
+              Tanggal Selesai Investigasi{" "}
+              <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <Input
+              className="h-10"
               disabled={!canEdit}
               id="investigation_end_date"
               onChange={(e) => {
@@ -283,165 +386,93 @@ export function InvestigationWorksheet({
               type="date"
               value={endDate}
             />
-          </div>
+            {startDate && endDate && endDate < startDate && (
+              <FieldDescription className="text-destructive">
+                Tanggal selesai mendahului tanggal mulai.
+              </FieldDescription>
+            )}
+          </Field>
         </div>
 
-        {/* Tabel Rekomendasi */}
+        {/* Rekomendasi Pencegahan */}
         <div className="flex flex-col gap-3 border-t pt-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-semibold text-foreground">
-                Tabel Rekomendasi Pencegahan <span className="text-destructive">*</span>
+                Rekomendasi Pencegahan{" "}
+                <span aria-hidden="true" className="text-destructive">*</span>
               </h3>
               <p className="text-xs text-muted-foreground">
-                Minimal 1 rekomendasi lengkap wajib diisi.
+                Minimal satu rekomendasi lengkap wajib diisi.
               </p>
             </div>
             {canEdit && (
-              <Button
-                className="gap-1 text-xs"
-                onClick={handleAddRecommendation}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <IconPlus className="size-3.5" />
-                <span>Tambah Rekomendasi</span>
+              <Button onClick={handleAddRecommendation} size="sm" type="button" variant="outline">
+                <IconPlus data-icon="inline-start" />
+                Tambah
               </Button>
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
             {recommendations.map((rec, index) => (
-              <div
-                className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center"
+              <ItemRow
+                canEdit={canEdit}
+                canRemove={recommendations.length > 1}
+                idPrefix="rekomendasi"
+                index={index}
+                item={rec}
                 key={index}
-              >
-                <input
-                  className="flex-1 rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    handleUpdateRecommendation(index, "text", e.target.value)
-                  }}
-                  placeholder="Rekomendasi tindakan pencegahan"
-                  value={rec.text}
-                />
-                <input
-                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none sm:w-48"
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    handleUpdateRecommendation(index, "responsible", e.target.value)
-                  }}
-                  placeholder="Penanggung Jawab"
-                  value={rec.responsible}
-                />
-                <input
-                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none sm:w-36"
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    handleUpdateRecommendation(index, "target_date", e.target.value)
-                  }}
-                  type="date"
-                  value={rec.target_date}
-                />
-                {canEdit && recommendations.length > 1 && (
-                  <Button
-                    className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      handleRemoveRecommendation(index)
-                    }}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <IconTrash className="size-4" />
-                  </Button>
-                )}
-              </div>
+                onRemove={handleRemoveRecommendation}
+                onUpdate={handleUpdateRecommendation}
+                textLabel="Rekomendasi"
+                textPlaceholder="Rekomendasi tindakan pencegahan"
+              />
             ))}
-          </div>
+          </ul>
         </div>
 
-        {/* Tabel Tindakan Perbaikan */}
+        {/* Tindakan Perbaikan */}
         <div className="flex flex-col gap-3 border-t pt-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h3 className="text-sm font-semibold text-foreground">
-                Tabel Tindakan Perbaikan (Action Plan) <span className="text-destructive">*</span>
+                Tindakan Perbaikan{" "}
+                <span aria-hidden="true" className="text-destructive">*</span>
               </h3>
               <p className="text-xs text-muted-foreground">
-                Minimal 1 tindakan perbaikan lengkap wajib diisi.
+                Minimal satu tindakan perbaikan lengkap wajib diisi.
               </p>
             </div>
             {canEdit && (
-              <Button
-                className="gap-1 text-xs"
-                onClick={handleAddAction}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <IconPlus className="size-3.5" />
-                <span>Tambah Tindakan</span>
+              <Button onClick={handleAddAction} size="sm" type="button" variant="outline">
+                <IconPlus data-icon="inline-start" />
+                Tambah
               </Button>
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
             {actions.map((act, index) => (
-              <div
-                className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3 sm:flex-row sm:items-center"
+              <ItemRow
+                canEdit={canEdit}
+                canRemove={actions.length > 1}
+                idPrefix="tindakan"
+                index={index}
+                item={act}
                 key={index}
-              >
-                <input
-                  className="flex-1 rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    handleUpdateAction(index, "text", e.target.value)
-                  }}
-                  placeholder="Tindakan korektif yang akan dilakukan"
-                  value={act.text}
-                />
-                <input
-                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none sm:w-48"
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    handleUpdateAction(index, "responsible", e.target.value)
-                  }}
-                  placeholder="Penanggung Jawab"
-                  value={act.responsible}
-                />
-                <input
-                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none sm:w-36"
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    handleUpdateAction(index, "target_date", e.target.value)
-                  }}
-                  type="date"
-                  value={act.target_date}
-                />
-                {canEdit && actions.length > 1 && (
-                  <Button
-                    className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      handleRemoveAction(index)
-                    }}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <IconTrash className="size-4" />
-                  </Button>
-                )}
-              </div>
+                onRemove={handleRemoveAction}
+                onUpdate={handleUpdateAction}
+                textLabel="Tindakan korektif"
+                textPlaceholder="Tindakan korektif yang akan dilakukan"
+              />
             ))}
-          </div>
+          </ul>
         </div>
 
         {canEdit && (
-          <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
+          <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-end">
             <Button
-              className="gap-1.5 font-medium"
               disabled={isSaving || isCompleting}
               onClick={() => {
                 void handleSaveDraft()
@@ -450,23 +481,13 @@ export function InvestigationWorksheet({
               type="button"
               variant="outline"
             >
-              <IconDeviceFloppy className="size-4" />
-              <span>{isSaving ? "Menyimpan..." : "Simpan Draf Investigasi"}</span>
+              {isSaving ? <Spinner data-icon="inline-start" /> : <IconDeviceFloppy data-icon="inline-start" />}
+              {isSaving ? "Menyimpan…" : "Simpan Draf"}
             </Button>
 
-            <Button
-              className="gap-1.5 font-medium"
-              disabled={isSaving || isCompleting}
-              size="sm"
-              type="submit"
-              variant="default"
-            >
-              <IconCheck className="size-4" />
-              <span>
-                {isCompleting
-                  ? "Menyelesaikan..."
-                  : "Selesaikan Investigasi & Tutup di Tingkat Unit"}
-              </span>
+            <Button className="font-medium" disabled={isSaving || isCompleting} size="sm" type="submit">
+              {isCompleting ? <Spinner data-icon="inline-start" /> : <IconCheck data-icon="inline-start" />}
+              {isCompleting ? "Menyelesaikan…" : "Selesaikan Investigasi"}
             </Button>
           </div>
         )}

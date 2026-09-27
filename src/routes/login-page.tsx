@@ -1,20 +1,24 @@
 import { useState, type SyntheticEvent } from "react"
-import { IconHeartbeat, IconLock, IconShieldCheck, IconUser } from "@tabler/icons-react"
+import {
+  IconAlertCircle,
+  IconHeartbeat,
+  IconLock,
+  IconShieldCheck,
+  IconUser,
+} from "@tabler/icons-react"
 import { useLocation, useNavigate } from "react-router"
 
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/lib/use-auth"
 
 interface LocationState {
   from?: { pathname?: string }
 }
-
-const QUICK_ACCOUNTS = [
-  { label: "Nakes IBS", username: "nakes_ibs", password: "NakesIbs#2026" },
-  { label: "Kepala Ruangan", username: "kepala_ruangan", password: "KepalaRuangan#2026" },
-  { label: "Komite PMKP", username: "komite_pmkp", password: "KomitePmkp#2026" },
-  { label: "Administrator", username: "admin_ibs", password: "AdminIbs#2026" },
-]
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -45,137 +49,148 @@ export function LoginPage() {
     }
   }
 
-  const fillCredential = (user: string, pass: string) => {
-    setUsername(user)
-    setPassword(pass)
-    setErrorMessage(null)
-  }
-
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-10rem)] max-w-sm flex-col justify-center px-4 py-10">
-      <div className="flex flex-col gap-6 rounded-xl border bg-card p-7 shadow-xs">
-        {/* Header */}
-        <header className="flex flex-col items-center gap-3 text-center">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+    <div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 gap-0 px-4 py-8 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:gap-12 lg:px-8 lg:py-12">
+      {/* ─── Panel konteks (desktop) ─── */}
+      <section
+        aria-hidden="true"
+        className="hidden flex-col gap-8 rounded-2xl bg-primary/[0.06] p-10 lg:flex"
+      >
+        <div className="flex flex-col gap-3">
+          <span className="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <IconHeartbeat className="size-6" />
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <h1 className="text-lg font-bold tracking-tight text-foreground">Masuk SIP-IKP IBS</h1>
-            <p className="text-xs text-muted-foreground">RSUD Prof. Dr. W. Z. Johannes Kupang</p>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-[11px] font-medium text-muted-foreground">
-            <IconShieldCheck className="size-3.5 text-primary" />
-            <span>Dokumen Rahasia · Sesi 15 Menit</span>
+          </span>
+          <h2 className="max-w-md text-2xl font-semibold tracking-tight text-foreground text-balance">
+            Sistem Informasi Pelaporan Insiden Keselamatan Pasien
+          </h2>
+          <p className="max-w-md text-sm leading-6 text-muted-foreground">
+            Instalasi Bedah Sentral — RSUD Prof. Dr. W. Z. Johannes Kupang. Laporkan insiden,
+            pantau tindak lanjut, dan dukung budaya keselamatan pasien.
+          </p>
+        </div>
+        <ul className="flex flex-col gap-4 border-t border-primary/10 pt-6">
+          <li className="flex items-start gap-3 text-sm text-foreground">
+            <IconShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span>
+              Akses berbasis peran dengan jejak audit penuh untuk setiap perubahan laporan.
+            </span>
+          </li>
+          <li className="flex items-start gap-3 text-sm text-foreground">
+            <IconHeartbeat aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span>
+              Alur terstruktur: pelaporan, verifikasi kepala ruangan, penilaian risiko, hingga
+              tinjauan Komite PMKP.
+            </span>
+          </li>
+          <li className="flex items-start gap-3 text-sm text-foreground">
+            <IconLock aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span>Kerahasiaan data pasien terjaga sesuai ketentuan rekam medis.</span>
+          </li>
+        </ul>
+      </section>
+
+      {/* ─── Kartu login ─── */}
+      <div className="mx-auto flex w-full max-w-sm flex-col gap-6 lg:max-w-none lg:pl-4">
+        <header className="flex flex-col items-center gap-3 text-center lg:items-start lg:text-left">
+          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground lg:hidden">
+            <IconHeartbeat className="size-6" />
+          </span>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Masuk ke SIP-IKP IBS
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Gunakan akun staf yang diterbitkan oleh administrator sistem.
+            </p>
           </div>
         </header>
 
-        {/* Error alert */}
         {errorMessage && (
-          <div
-            aria-live="polite"
-            className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive"
+          <Alert
+            className="border-destructive/30 bg-destructive/5"
             role="alert"
+            variant="destructive"
           >
-            {errorMessage}
-          </div>
+            <IconAlertCircle />
+            <AlertDescription className="text-destructive">{errorMessage}</AlertDescription>
+          </Alert>
         )}
 
-        {/* Login form */}
         <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            void handleSubmit(e)
+          className="flex flex-col gap-5 rounded-xl border bg-card p-6 shadow-xs sm:p-7"
+          onSubmit={(event) => {
+            void handleSubmit(event)
           }}
         >
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="username">
-              Username atau NIP
-            </label>
-            <div className="relative flex items-center">
-              <span className="pointer-events-none absolute left-3 text-muted-foreground">
-                <IconUser className="size-4" />
-              </span>
-              <input
-                autoComplete="username"
-                className="w-full rounded-lg border bg-background py-2 pr-3 pl-9 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                id="username"
-                name="username"
-                onChange={(e) => {
-                  setUsername(e.target.value)
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="username">Nama Pengguna atau NIP</FieldLabel>
+              <InputGroup className="h-10">
+                <InputGroupAddon align="inline-start">
+                  <IconUser />
+                </InputGroupAddon>
+                <InputGroupInput
+                  autoComplete="username"
+                  id="username"
+                  name="username"
+                  onChange={(event) => {
+                    setUsername(event.target.value)
+                  }}
+                  placeholder="NIP atau nama pengguna staf"
+                  required
+                  type="text"
+                  value={username}
+                />
+              </InputGroup>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="password">Kata Sandi</FieldLabel>
+              <InputGroup className="h-10">
+                <InputGroupAddon align="inline-start">
+                  <IconLock />
+                </InputGroupAddon>
+                <InputGroupInput
+                  autoComplete="current-password"
+                  id="password"
+                  name="password"
+                  onChange={(event) => {
+                    setPassword(event.target.value)
+                  }}
+                  placeholder="Masukkan kata sandi"
+                  required
+                  type="password"
+                  value={password}
+                />
+              </InputGroup>
+            </Field>
+
+            <label
+              className="flex min-h-10 cursor-pointer items-center gap-2.5 text-sm text-muted-foreground select-none"
+              htmlFor="remember"
+            >
+              <Checkbox
+                checked={rememberMe}
+                id="remember"
+                name="remember"
+                onCheckedChange={(checked) => {
+                  setRememberMe(checked)
                 }}
-                placeholder="NIP atau username staf"
-                required
-                type="text"
-                value={username}
               />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-foreground" htmlFor="password">
-              Kata Sandi
+              Ingat nama pengguna di perangkat ini
             </label>
-            <div className="relative flex items-center">
-              <span className="pointer-events-none absolute left-3 text-muted-foreground">
-                <IconLock className="size-4" />
-              </span>
-              <input
-                autoComplete="current-password"
-                className="w-full rounded-lg border bg-background py-2 pr-3 pl-9 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                id="password"
-                name="password"
-                onChange={(e) => {
-                  setPassword(e.target.value)
-                }}
-                placeholder="Masukkan kata sandi"
-                required
-                type="password"
-                value={password}
-              />
-            </div>
-          </div>
+          </FieldGroup>
 
-          <div className="flex items-center gap-2 text-xs">
-            <input
-              checked={rememberMe}
-              className="rounded border-border text-primary focus:ring-primary"
-              id="remember"
-              onChange={(e) => {
-                setRememberMe(e.target.checked)
-              }}
-              type="checkbox"
-            />
-            <label className="cursor-pointer text-muted-foreground" htmlFor="remember">
-              Ingat username di perangkat ini
-            </label>
-          </div>
-
-          <Button className="w-full font-semibold" disabled={isSubmitting} size="default" type="submit">
-            {isSubmitting ? "Memverifikasi..." : "Masuk ke Sistem"}
+          <Button className="w-full font-semibold" disabled={isSubmitting} size="lg" type="submit">
+            {isSubmitting && <Spinner data-icon="inline-start" />}
+            {isSubmitting ? "Memverifikasi…" : "Masuk"}
           </Button>
         </form>
 
-        {/* Quick access */}
-        <section aria-labelledby="quick-access-title" className="rounded-lg border bg-muted/20 p-3">
-          <p className="mb-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide" id="quick-access-title">
-            Akses Cepat
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {QUICK_ACCOUNTS.map(({ label, username: u, password: p }) => (
-              <button
-                key={u}
-                className="rounded-md border bg-card px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                onClick={() => {
-                  fillCredential(u, p)
-                }}
-                type="button"
-              >
-                <span className="block text-xs font-semibold text-foreground">{label}</span>
-                <span className="text-[10px] text-muted-foreground">{u}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+        <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+          <IconShieldCheck aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
+          Sesi berakhir otomatis setelah tidak aktif. Data akses tercatat dalam jejak audit.
+        </p>
       </div>
     </div>
   )

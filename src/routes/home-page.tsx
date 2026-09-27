@@ -1,28 +1,43 @@
 import { useEffect, useState } from "react"
 import {
   IconAlertTriangle,
+  IconArrowRight,
   IconChartBar,
-  IconCheck,
+  IconCircleCheck,
   IconClipboardList,
   IconClock,
   IconFilePlus,
   IconFileText,
-  IconFolder,
   IconShieldCheck,
   IconUsers,
 } from "@tabler/icons-react"
 import { Link, useNavigate } from "react-router"
 
+import { EmptyState } from "@/components/shared/empty-state"
+import { ErrorState } from "@/components/shared/error-state"
+import { StatTile } from "@/components/shared/stat-tile"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { fetchIncidents, fetchOperationalRecap } from "@/features/incidents/api/incidents-api"
 import { IncidentStatusBadge } from "@/features/incidents/components/incident-status-badge"
 import { RiskBadge } from "@/features/incidents/components/risk-badge"
+import { INCIDENT_TYPE_SHORT_LABELS } from "@/features/incidents/lib/labels"
 import type { IncidentReport, RecapSummary } from "@/features/incidents/types/incident"
 import type { UserRole } from "@/lib/auth-context"
 import { useAuth } from "@/lib/use-auth"
 import { cn } from "@/lib/utils"
 
-// ─── Role-aware welcome label ─────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────
+
 function getRoleLabel(role: UserRole): string {
   switch (role) {
     case "TENAGA_KESEHATAN":
@@ -36,389 +51,402 @@ function getRoleLabel(role: UserRole): string {
   }
 }
 
-// ─── Metric tile ─────────────────────────────────────────────────
-function MetricTile({
-  label,
-  value,
-  sublabel,
-  accent,
-}: {
-  label: string
-  value: number | string
-  sublabel?: string
-  accent?: "default" | "warning" | "danger" | "success"
-}) {
-  const valueClass = cn(
-    "mt-1 text-2xl font-bold tabular-nums",
-    accent === "warning" && "text-amber-700",
-    accent === "danger" && "text-rose-700",
-    accent === "success" && "text-emerald-700",
-    (!accent || accent === "default") && "text-foreground",
-  )
-  return (
-    <div className="flex flex-col gap-0.5 rounded-lg border bg-card px-4 py-3.5">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <span className={valueClass}>{value}</span>
-      {sublabel && <span className="text-[11px] text-muted-foreground">{sublabel}</span>}
-    </div>
-  )
+function formatTanggal(value: string): string {
+  return new Date(value).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
 }
 
-// ─── Action card ─────────────────────────────────────────────────
-function ActionCard({
-  title,
-  description,
-  to,
-  icon: Icon,
-  variant = "default",
-}: {
+// ─── Task queue ("Perlu Tindakan Anda") ─────────────────────────
+
+type TaskTone = "warning" | "primary" | "danger" | "success"
+
+interface TaskItem {
+  key: string
+  tone: TaskTone
+  icon: React.ComponentType<{ className?: string }>
   title: string
   description: string
+  count?: number
   to: string
-  icon: React.ComponentType<{ className?: string }>
-  variant?: "default" | "primary"
-}) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        "group flex items-start gap-3 rounded-lg border p-4 transition-colors hover:border-primary/40 hover:bg-primary/5",
-        variant === "primary" && "border-primary/30 bg-primary/5",
-      )}
-    >
-      <span
-        className={cn(
-          "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md",
-          variant === "primary"
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary",
-        )}
-      >
-        <Icon className="size-4" />
-      </span>
-      <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-semibold text-foreground">{title}</span>
-        <span className="text-xs text-muted-foreground leading-relaxed">{description}</span>
-      </div>
-    </Link>
-  )
 }
 
-// ─── Incident row (compact) ──────────────────────────────────────
-function IncidentRow({ inc }: { inc: IncidentReport }) {
-  const navigate = useNavigate()
-  return (
-    <tr
-      className="cursor-pointer transition-colors hover:bg-muted/30"
-      onClick={() => void navigate(`/laporan/${inc.id}`)}
-    >
-      <td className="py-2.5 pl-4 pr-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="font-mono text-[11px] font-semibold text-foreground">
-            {inc.report_number ?? "DRAF"}
+const toneStyles: Record<TaskTone, { icon: string; count: string }> = {
+  warning: { icon: "bg-status-warning text-status-warning-foreground", count: "text-status-warning-foreground" },
+  primary: { icon: "bg-primary/10 text-primary", count: "text-primary" },
+  danger: { icon: "bg-risk-red text-risk-red-foreground", count: "text-risk-red-foreground" },
+  success: { icon: "bg-status-success text-status-success-foreground", count: "text-status-success-foreground" },
+}
+
+function TaskQueue({ tasks }: { tasks: TaskItem[] }) {
+  if (tasks.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex items-center gap-3 py-5">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-status-success text-status-success-foreground">
+            <IconCircleCheck className="size-4.5" />
           </span>
-          <IncidentStatusBadge status={inc.status} />
-        </div>
-      </td>
-      <td className="px-3 py-2.5">
-        <span className="line-clamp-2 text-xs font-medium text-foreground">
-          {inc.incident_title ?? "(Draf tanpa judul)"}
-        </span>
-      </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
-        <RiskBadge grade={inc.risk_grade} />
-      </td>
-      <td className="py-2.5 pl-3 pr-4 whitespace-nowrap text-right">
-        <span className="text-[11px] text-muted-foreground">
-          {new Date(inc.incident_datetime).toLocaleDateString("id-ID")}
-        </span>
-      </td>
-    </tr>
+          <div>
+            <p className="text-sm font-medium text-foreground">Tidak ada tugas tertunda</p>
+            <p className="text-xs text-muted-foreground">
+              Semua laporan yang menjadi tanggung jawab Anda sudah diproses.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold">Perlu Tindakan Anda</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <ul className="flex flex-col">
+          {tasks.map((task, index) => {
+            const tone = toneStyles[task.tone]
+            return (
+              <li key={task.key}>
+                <Link
+                  className={cn(
+                    "group -mx-2 flex items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-muted/60",
+                    index > 0 && "border-t border-border/60",
+                  )}
+                  to={task.to}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", tone.icon)}
+                  >
+                    <task.icon className="size-4.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {task.title}
+                      {task.count !== undefined && task.count > 0 && (
+                        <span className={cn("ml-1.5 font-semibold tabular-nums", tone.count)}>
+                          ({task.count})
+                        </span>
+                      )}
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {task.description}
+                    </span>
+                  </span>
+                  <IconArrowRight
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                  />
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </CardContent>
+    </Card>
   )
 }
 
-// ─── Dashboard sections per role ─────────────────────────────────
+// ─── Recent incidents (responsive: table ≥md, cards <md) ─────────
 
-function NakesDashboard({
+function RecentIncidents({
   incidents,
-  isLoading,
+  title,
+  emptyTitle,
+  emptyDescription,
+  emptyAction,
 }: {
   incidents: IncidentReport[]
-  isLoading: boolean
+  title: string
+  emptyTitle: string
+  emptyDescription: string
+  emptyAction?: React.ReactNode
 }) {
   const navigate = useNavigate()
-  const myDrafts = incidents.filter((i) => i.status === "DRAFT")
-  const mySubmitted = incidents.filter((i) => i.status === "SUBMITTED")
-  const revisionRequired = incidents.filter((i) => i.status === "REVISION_REQUIRED")
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-2 pb-2">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        <Button
+          className="text-muted-foreground"
+          render={<Link to="/laporan" />}
+          size="sm"
+          variant="ghost"
+        >
+          Lihat semua
+          <IconArrowRight data-icon="inline-end" />
+        </Button>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {incidents.length === 0 ? (
+          <EmptyState
+            className="border-0 bg-transparent py-6"
+            description={emptyDescription}
+            title={emptyTitle}
+            action={emptyAction}
+          />
+        ) : (
+          <>
+            {/* Desktop / tablet */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-36">No. Laporan</TableHead>
+                    <TableHead>Judul</TableHead>
+                    <TableHead className="w-24">Tipe</TableHead>
+                    <TableHead className="w-40">Status</TableHead>
+                    <TableHead className="w-36">Risiko</TableHead>
+                    <TableHead className="w-28 text-right">Tanggal</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {incidents.map((inc) => (
+                    <TableRow key={inc.id}>
+                      <TableCell className="font-mono text-xs font-medium">
+                        <Link
+                          className="rounded-sm hover:text-primary hover:underline hover:underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          to={`/laporan/${inc.id}`}
+                        >
+                          {inc.report_number ?? "—"}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="max-w-56 truncate font-medium">
+                        <Link
+                          className="rounded-sm hover:text-primary hover:underline hover:underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          to={`/laporan/${inc.id}`}
+                        >
+                          {inc.incident_title ?? "(Tanpa judul)"}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {INCIDENT_TYPE_SHORT_LABELS[inc.incident_type]}
+                      </TableCell>
+                      <TableCell>
+                        <IncidentStatusBadge status={inc.status} />
+                      </TableCell>
+                      <TableCell>
+                        <RiskBadge grade={inc.risk_grade} />
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
+                        {formatTanggal(inc.incident_datetime)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile */}
+            <ul className="flex flex-col md:hidden">
+              {incidents.map((inc, index) => (
+                <li key={inc.id}>
+                  <button
+                    className={cn(
+                      "flex w-full flex-col gap-1.5 py-3 text-left",
+                      index > 0 && "border-t border-border/60",
+                    )}
+                    onClick={() => void navigate(`/laporan/${inc.id}`)}
+                    type="button"
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {inc.incident_title ?? "(Tanpa judul)"}
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                        {inc.report_number ?? "DRAF"}
+                      </span>
+                    </span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <IncidentStatusBadge status={inc.status} />
+                      <RiskBadge grade={inc.risk_grade} />
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                        {formatTanggal(inc.incident_datetime)}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Dashboards per role ─────────────────────────────────────────
+
+function NakesDashboard({ incidents }: { incidents: IncidentReport[] }) {
+  const navigate = useNavigate()
+  const drafts = incidents.filter((i) => i.status === "DRAFT")
+  const submitted = incidents.filter((i) => i.status === "SUBMITTED")
+  const revisions = incidents.filter((i) => i.status === "REVISION_REQUIRED")
+
+  const tasks: TaskItem[] = [
+    ...(revisions.length > 0
+      ? [
+          {
+            key: "revisi",
+            tone: "warning" as const,
+            icon: IconAlertTriangle,
+            title: "Laporan perlu diperbaiki",
+            description: "Dikembalikan oleh Kepala Ruangan — perbaiki lalu kirim ulang.",
+            count: revisions.length,
+            to: "/laporan?status=REVISION_REQUIRED",
+          },
+        ]
+      : []),
+    ...(drafts.length > 0
+      ? [
+          {
+            key: "draf",
+            tone: "primary" as const,
+            icon: IconFileText,
+            title: "Draf belum terkirim",
+            description: "Lanjutkan pengisian dan kirim laporan ketika siap.",
+            count: drafts.length,
+            to: "/laporan?status=DRAFT",
+          },
+        ]
+      : []),
+  ]
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Quick actions */}
-      <section aria-labelledby="quick-actions-title">
-        <h2 className="mb-3 text-sm font-semibold text-foreground" id="quick-actions-title">
-          Tindakan Cepat
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ActionCard
-            description="Mulai laporan insiden keselamatan pasien baru."
-            icon={IconFilePlus}
-            title="Buat Laporan Insiden"
-            to="/laporan/baru"
-            variant="primary"
-          />
-          <ActionCard
-            description="Lihat semua laporan insiden yang telah dibuat."
-            icon={IconClipboardList}
-            title="Daftar Laporan Saya"
-            to="/laporan"
-          />
-        </div>
-      </section>
+      <TaskQueue tasks={tasks} />
 
-      {/* Attention items */}
-      {revisionRequired.length > 0 && (
-        <section
-          aria-labelledby="revision-title"
-          className="rounded-lg border border-amber-300/50 bg-amber-50/40 p-4"
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <IconAlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
-            <h2 className="text-sm font-semibold text-amber-800" id="revision-title">
-              Perlu Perbaikan ({revisionRequired.length})
-            </h2>
-          </div>
-          <p className="mb-3 text-xs text-amber-700">
-            Laporan berikut dikembalikan oleh Kepala Ruangan dan memerlukan revisi.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            {revisionRequired.slice(0, 3).map((inc) => (
-              <button
-                key={inc.id}
-                className="flex items-center justify-between rounded-md border border-amber-200 bg-white px-3 py-2 text-left text-xs hover:border-amber-400 transition-colors"
-                onClick={() => void navigate(`/laporan/${inc.id}`)}
-                type="button"
-              >
-                <span className="font-medium text-foreground">
-                  {inc.incident_title ?? "(Draf tanpa judul)"}
-                </span>
-                <span className="ml-2 font-mono text-[11px] text-muted-foreground">
-                  {inc.report_number ?? "DRAF"}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          hint="Siap dikirim"
+          icon={IconFilePlus}
+          label="Draf"
+          onClick={() => void navigate("/laporan?status=DRAFT")}
+          tone="default"
+          value={drafts.length}
+        />
+        <StatTile
+          hint="Menunggu verifikasi"
+          icon={IconClock}
+          label="Terkirim"
+          onClick={() => void navigate("/laporan?status=SUBMITTED")}
+          tone="primary"
+          value={submitted.length}
+        />
+        <StatTile
+          hint="Perlu revisi Anda"
+          icon={IconAlertTriangle}
+          label="Perlu Perbaikan"
+          onClick={() => void navigate("/laporan?status=REVISION_REQUIRED")}
+          tone={revisions.length > 0 ? "warning" : "default"}
+          value={revisions.length}
+        />
+        <StatTile
+          hint="Sepanjang waktu"
+          icon={IconClipboardList}
+          label="Total Laporan Saya"
+          onClick={() => void navigate("/laporan")}
+          value={incidents.length}
+        />
+      </div>
 
-      {/* Metrics */}
-      <section aria-labelledby="my-metrics-title">
-        <h2 className="mb-3 text-sm font-semibold text-foreground" id="my-metrics-title">
-          Ringkasan Laporan Saya
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <MetricTile label="Draf Tersimpan" value={myDrafts.length} sublabel="Belum dikirim" />
-          <MetricTile
-            label="Menunggu Verifikasi"
-            value={mySubmitted.length}
-            sublabel="Dalam antrean review"
-          />
-          <MetricTile
-            label="Perlu Revisi"
-            value={revisionRequired.length}
-            sublabel="Dikembalikan Kepala Ruangan"
-            accent={revisionRequired.length > 0 ? "warning" : "default"}
-          />
-        </div>
-      </section>
-
-      {/* Recent incidents */}
-      {!isLoading && incidents.length > 0 && (
-        <section aria-labelledby="recent-title">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground" id="recent-title">
-              Laporan Terbaru
-            </h2>
-            <Link to="/laporan" className="text-xs text-primary hover:underline">
-              Lihat semua →
-            </Link>
-          </div>
-          <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b bg-muted/30">
-                <tr>
-                  <th className="py-2 pl-4 pr-3 font-medium text-muted-foreground">No./Status</th>
-                  <th className="px-3 py-2 font-medium text-muted-foreground">Judul</th>
-                  <th className="px-3 py-2 font-medium text-muted-foreground">Risiko</th>
-                  <th className="py-2 pl-3 pr-4 text-right font-medium text-muted-foreground">
-                    Tanggal
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {incidents.slice(0, 5).map((inc) => (
-                  <IncidentRow inc={inc} key={inc.id} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {!isLoading && incidents.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-10 text-center">
-          <IconFolder className="size-8 text-muted-foreground/40" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">Belum ada laporan</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Mulai buat laporan insiden pertama Anda.
-            </p>
-          </div>
-          <Button
-            className="mt-1 gap-1.5"
-            onClick={() => void navigate("/laporan/baru")}
-            size="sm"
-          >
-            <IconFilePlus className="size-4" />
-            Buat Laporan
+      <RecentIncidents
+        emptyAction={
+          <Button onClick={() => void navigate("/laporan/baru")} size="sm">
+            <IconFilePlus data-icon="inline-start" />
+            Buat Laporan Pertama
           </Button>
-        </div>
-      )}
+        }
+        emptyDescription="Laporan insiden yang Anda buat akan tampil di sini."
+        emptyTitle="Belum ada laporan"
+        incidents={incidents.slice(0, 5)}
+        title="Laporan Terbaru"
+      />
     </div>
   )
 }
 
-function KepalaRuanganDashboard({
-  incidents,
-  isLoading,
-}: {
-  incidents: IncidentReport[]
-  isLoading: boolean
-}) {
+function KepalaRuanganDashboard({ incidents }: { incidents: IncidentReport[] }) {
   const navigate = useNavigate()
   const needsReview = incidents.filter(
     (i) => i.status === "SUBMITTED" || i.status === "UNDER_REVIEW",
   )
-  const revisionRequired = incidents.filter((i) => i.status === "REVISION_REQUIRED")
-  const simpleInvestigation = incidents.filter((i) => i.status === "SIMPLE_INVESTIGATION")
-  const highRisk = incidents.filter(
-    (i) => i.risk_grade === "KUNING" || i.risk_grade === "MERAH",
-  )
+  const investigations = incidents.filter((i) => i.status === "SIMPLE_INVESTIGATION")
+  const highRisk = incidents.filter((i) => i.risk_grade === "KUNING" || i.risk_grade === "MERAH")
+
+  const tasks: TaskItem[] = [
+    ...(needsReview.length > 0
+      ? [
+          {
+            key: "review",
+            tone: "warning" as const,
+            icon: IconFileText,
+            title: "Menunggu verifikasi Anda",
+            description: "Periksa laporan, tetapkan pita risiko, lalu lanjutkan alur.",
+            count: needsReview.length,
+            to: "/laporan?status=SUBMITTED",
+          },
+        ]
+      : []),
+    ...(investigations.length > 0
+      ? [
+          {
+            key: "investigasi",
+            tone: "primary" as const,
+            icon: IconClipboardList,
+            title: "Investigasi sederhana berjalan",
+            description: "Lengkapi lembar kerja investigasi untuk risiko Biru/Hijau.",
+            count: investigations.length,
+            to: "/laporan?status=SIMPLE_INVESTIGATION",
+          },
+        ]
+      : []),
+  ]
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Action items */}
-      {needsReview.length > 0 && (
-        <section
-          aria-labelledby="review-needed-title"
-          className="rounded-lg border border-primary/30 bg-primary/5 p-4"
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <IconFileText className="size-4 text-primary" aria-hidden="true" />
-            <h2 className="text-sm font-semibold text-foreground" id="review-needed-title">
-              Menunggu Review Anda ({needsReview.length})
-            </h2>
-          </div>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Laporan berikut perlu diverifikasi dan ditetapkan pita risikonya.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            {needsReview.slice(0, 5).map((inc) => (
-              <button
-                key={inc.id}
-                className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-left text-xs hover:bg-muted/50 transition-colors"
-                onClick={() => void navigate(`/laporan/${inc.id}`)}
-                type="button"
-              >
-                <span className="font-medium text-foreground">
-                  {inc.incident_title ?? "(Draf tanpa judul)"}
-                </span>
-                <span className="ml-2 shrink-0 font-mono text-[11px] text-muted-foreground">
-                  {inc.report_number ?? "DRAF"}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+      <TaskQueue tasks={tasks} />
 
-      {/* Metrics */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricTile
+        <StatTile
+          hint="Perlu diverifikasi"
+          icon={IconClock}
           label="Menunggu Review"
+          onClick={() => void navigate("/laporan?status=SUBMITTED")}
+          tone={needsReview.length > 0 ? "warning" : "default"}
           value={needsReview.length}
-          accent={needsReview.length > 0 ? "warning" : "default"}
         />
-        <MetricTile
+        <StatTile
+          hint="Risiko Biru / Hijau"
+          icon={IconClipboardList}
           label="Investigasi Sederhana"
-          value={simpleInvestigation.length}
-          sublabel="BIRU / HIJAU"
+          onClick={() => void navigate("/laporan?status=SIMPLE_INVESTIGATION")}
+          tone="primary"
+          value={investigations.length}
         />
-        <MetricTile
-          label="Perlu Revisi"
-          value={revisionRequired.length}
-          sublabel="Dikembalikan ke pelapor"
-        />
-        <MetricTile
+        <StatTile
+          hint="Pita Kuning / Merah"
+          icon={IconAlertTriangle}
           label="Risiko Tinggi"
+          onClick={() => void navigate("/laporan")}
+          tone={highRisk.length > 0 ? "danger" : "default"}
           value={highRisk.length}
-          sublabel="KUNING / MERAH"
-          accent={highRisk.length > 0 ? "danger" : "default"}
+        />
+        <StatTile
+          hint="Unit saya, semua status"
+          icon={IconChartBar}
+          label="Total Laporan Unit"
+          onClick={() => void navigate("/laporan/rekap")}
+          value={incidents.length}
         />
       </div>
 
-      {/* Quick nav */}
-      <section aria-labelledby="nav-title">
-        <h2 className="mb-3 text-sm font-semibold text-foreground" id="nav-title">
-          Navigasi Cepat
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ActionCard
-            description="Lihat semua laporan dan pantau alur kerja pelaporan."
-            icon={IconClipboardList}
-            title="Daftar Laporan Insiden"
-            to="/laporan"
-          />
-          <ActionCard
-            description="Ringkasan agregat dan indikator keselamatan pasien."
-            icon={IconChartBar}
-            title="Rekapitulasi Operasional"
-            to="/laporan/rekap"
-          />
-        </div>
-      </section>
-
-      {/* All recent */}
-      {!isLoading && incidents.length > 0 && (
-        <section aria-labelledby="all-recent-title">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground" id="all-recent-title">
-              Laporan Terbaru
-            </h2>
-            <Link to="/laporan" className="text-xs text-primary hover:underline">
-              Lihat semua →
-            </Link>
-          </div>
-          <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b bg-muted/30">
-                <tr>
-                  <th className="py-2 pl-4 pr-3 font-medium text-muted-foreground">No./Status</th>
-                  <th className="px-3 py-2 font-medium text-muted-foreground">Judul</th>
-                  <th className="px-3 py-2 font-medium text-muted-foreground">Risiko</th>
-                  <th className="py-2 pl-3 pr-4 text-right font-medium text-muted-foreground">
-                    Tanggal
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {incidents.slice(0, 7).map((inc) => (
-                  <IncidentRow inc={inc} key={inc.id} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      <RecentIncidents
+        emptyDescription="Laporan insiden unit Anda akan tampil di sini."
+        emptyTitle="Belum ada laporan unit"
+        incidents={incidents.slice(0, 7)}
+        title="Aktivitas Terbaru Unit"
+      />
     </div>
   )
 }
@@ -426,230 +454,270 @@ function KepalaRuanganDashboard({
 function PmkpDashboard({
   incidents,
   summary,
-  isLoading,
 }: {
   incidents: IncidentReport[]
   summary: RecapSummary | null
-  isLoading: boolean
 }) {
-  const pmkpReview = incidents.filter((i) => i.status === "PMKP_REVIEW")
-  const highRisk = incidents.filter(
-    (i) => i.risk_grade === "KUNING" || i.risk_grade === "MERAH",
+  const navigate = useNavigate()
+  const pmkpQueue = incidents.filter((i) => i.status === "PMKP_REVIEW")
+  const highRiskActive = incidents.filter(
+    (i) =>
+      (i.risk_grade === "KUNING" || i.risk_grade === "MERAH") &&
+      i.status !== "COMPLETED" &&
+      i.status !== "COMPLETED_BY_UNIT",
   )
+
+  const tasks: TaskItem[] = [
+    ...(pmkpQueue.length > 0
+      ? [
+          {
+            key: "pmkp",
+            tone: "warning" as const,
+            icon: IconShieldCheck,
+            title: "Antrean tinjauan PMKP",
+            description: "Kasus risiko tinggi menunggu arahan dan evaluasi komite.",
+            count: pmkpQueue.length,
+            to: "/laporan?status=PMKP_REVIEW",
+          },
+        ]
+      : []),
+    ...(highRiskActive.length > 0
+      ? [
+          {
+            key: "risiko-tinggi",
+            tone: "danger" as const,
+            icon: IconAlertTriangle,
+            title: "Kasus risiko tinggi masih terbuka",
+            description: "Pantau tindak lanjut pita Kuning dan Merah.",
+            count: highRiskActive.length,
+            to: "/laporan",
+          },
+        ]
+      : []),
+  ]
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Action items */}
-      {pmkpReview.length > 0 && (
-        <section
-          aria-labelledby="pmkp-pending-title"
-          className="rounded-lg border border-primary/30 bg-primary/5 p-4"
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <IconShieldCheck className="size-4 text-primary" aria-hidden="true" />
-            <h2 className="text-sm font-semibold text-foreground" id="pmkp-pending-title">
-              Tinjauan PMKP Menunggu ({pmkpReview.length})
-            </h2>
-          </div>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Kasus risiko KUNING/MERAH berikut memerlukan tindakan PMKP.
-          </p>
-          <Link
-            to="/laporan?status=PMKP_REVIEW"
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <IconFileText className="size-3.5" />
-            Buka Antrian Tinjauan PMKP
-          </Link>
-        </section>
-      )}
+      <TaskQueue tasks={tasks} />
 
-      {/* Metrics */}
       {summary && (
-        <section aria-labelledby="pmkp-metrics-title">
-          <h2 className="mb-3 text-sm font-semibold text-foreground" id="pmkp-metrics-title">
-            Ringkasan Operasional
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricTile label="Total Laporan" value={summary.totalReports} sublabel="Semua status" />
-            <MetricTile
-              label="Risiko Tinggi (KUNING)"
-              value={summary.byRiskGrade.KUNING}
-              accent={summary.byRiskGrade.KUNING > 0 ? "warning" : "default"}
-            />
-            <MetricTile
-              label="Risiko Ekstrem (MERAH)"
-              value={summary.byRiskGrade.MERAH}
-              accent={summary.byRiskGrade.MERAH > 0 ? "danger" : "default"}
-            />
-          </div>
-        </section>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            hint="Semua status"
+            icon={IconClipboardList}
+            label="Total Laporan"
+            onClick={() => void navigate("/laporan")}
+            value={summary.totalReports}
+          />
+          <StatTile
+            hint="Menunggu arahan komite"
+            icon={IconShieldCheck}
+            label="Tinjauan PMKP"
+            onClick={() => void navigate("/laporan?status=PMKP_REVIEW")}
+            tone={pmkpQueue.length > 0 ? "warning" : "default"}
+            value={pmkpQueue.length}
+          />
+          <StatTile
+            hint="Pita Kuning"
+            icon={IconAlertTriangle}
+            label="Risiko Tinggi"
+            onClick={() => void navigate("/laporan/rekap")}
+            tone={summary.byRiskGrade.KUNING > 0 ? "warning" : "default"}
+            value={summary.byRiskGrade.KUNING}
+          />
+          <StatTile
+            hint="Pita Merah"
+            icon={IconAlertTriangle}
+            label="Risiko Ekstrem"
+            onClick={() => void navigate("/laporan/rekap")}
+            tone={summary.byRiskGrade.MERAH > 0 ? "danger" : "default"}
+            value={summary.byRiskGrade.MERAH}
+          />
+        </div>
       )}
 
-      {/* Navigation */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <ActionCard
-          description="Pantau semua laporan insiden lintas status dan pita risiko."
-          icon={IconClipboardList}
-          title="Daftar Laporan Insiden"
+        <Link
+          className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
           to="/laporan"
-        />
-        <ActionCard
-          description="Rekapitulasi dan indikator mutu keselamatan pasien IBS."
-          icon={IconChartBar}
-          title="Rekapitulasi Operasional"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+            <IconClipboardList className="size-4.5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">Daftar Laporan Insiden</span>
+            <span className="block text-xs text-muted-foreground">
+              Pantau semua laporan lintas status dan pita risiko.
+            </span>
+          </span>
+        </Link>
+        <Link
+          className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
           to="/laporan/rekap"
-          variant="primary"
-        />
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+            <IconChartBar className="size-4.5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">Rekapitulasi Operasional</span>
+            <span className="block text-xs text-muted-foreground">
+              Indikator mutu dan keselamatan pasien IBS.
+            </span>
+          </span>
+        </Link>
       </div>
 
-      {/* High-risk incidents */}
-      {!isLoading && highRisk.length > 0 && (
-        <section aria-labelledby="high-risk-title">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground" id="high-risk-title">
-              Laporan Risiko Tinggi / Ekstrem
-            </h2>
-          </div>
-          <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b bg-muted/30">
-                <tr>
-                  <th className="py-2 pl-4 pr-3 font-medium text-muted-foreground">No./Status</th>
-                  <th className="px-3 py-2 font-medium text-muted-foreground">Judul</th>
-                  <th className="px-3 py-2 font-medium text-muted-foreground">Risiko</th>
-                  <th className="py-2 pl-3 pr-4 text-right font-medium text-muted-foreground">
-                    Tanggal
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {highRisk.slice(0, 7).map((inc) => (
-                  <IncidentRow inc={inc} key={inc.id} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      <RecentIncidents
+        emptyDescription="Tidak ada kasus risiko Kuning/Merah yang terbuka saat ini."
+        emptyTitle="Tidak ada kasus risiko tinggi"
+        incidents={highRiskActive.slice(0, 7)}
+        title="Kasus Risiko Tinggi Terbuka"
+      />
     </div>
   )
 }
 
 function AdminDashboard({ incidents }: { incidents: IncidentReport[] }) {
+  const navigate = useNavigate()
+  const drafts = incidents.filter((i) => i.status === "DRAFT")
+  const inProgress = incidents.filter(
+    (i) =>
+      i.status === "SUBMITTED" ||
+      i.status === "UNDER_REVIEW" ||
+      i.status === "SIMPLE_INVESTIGATION" ||
+      i.status === "PMKP_REVIEW",
+  )
+  const completed = incidents.filter(
+    (i) => i.status === "COMPLETED" || i.status === "COMPLETED_BY_UNIT",
+  )
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricTile label="Total Laporan" value={incidents.length} sublabel="Semua status" />
-        <MetricTile
-          label="Draf Aktif"
-          value={incidents.filter((i) => i.status === "DRAFT").length}
-          sublabel="Belum dikirim"
+        <StatTile
+          hint="Semua status"
+          icon={IconClipboardList}
+          label="Total Laporan"
+          onClick={() => void navigate("/laporan")}
+          value={incidents.length}
         />
-        <MetricTile
+        <StatTile
+          hint="Review & investigasi"
+          icon={IconClock}
           label="Dalam Proses"
-          value={
-            incidents.filter(
-              (i) =>
-                i.status === "SUBMITTED" ||
-                i.status === "UNDER_REVIEW" ||
-                i.status === "SIMPLE_INVESTIGATION" ||
-                i.status === "PMKP_REVIEW",
-            ).length
-          }
-          sublabel="Review & investigasi"
+          onClick={() => void navigate("/laporan")}
+          tone="primary"
+          value={inProgress.length}
         />
-        <MetricTile
+        <StatTile
+          hint="Belum dikirim pelapor"
+          icon={IconFileText}
+          label="Draf Aktif"
+          onClick={() => void navigate("/laporan?status=DRAFT")}
+          value={drafts.length}
+        />
+        <StatTile
+          hint="Kasus ditutup"
+          icon={IconCircleCheck}
           label="Selesai"
-          value={
-            incidents.filter(
-              (i) => i.status === "COMPLETED" || i.status === "COMPLETED_BY_UNIT",
-            ).length
-          }
-          sublabel="Kasus ditutup"
-          accent="success"
+          onClick={() => void navigate("/laporan?status=COMPLETED")}
+          tone="success"
+          value={completed.length}
         />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <ActionCard
-          description="Pantau semua laporan insiden operasional IBS."
-          icon={IconClipboardList}
-          title="Daftar Laporan Insiden"
-          to="/laporan"
-        />
-        <ActionCard
-          description="Rekapitulasi dan indikator mutu keselamatan pasien."
-          icon={IconChartBar}
-          title="Rekapitulasi Operasional"
-          to="/laporan/rekap"
-        />
-        <ActionCard
-          description="Kelola akun pengguna dan hak akses staf IBS."
-          icon={IconUsers}
-          title="Manajemen Pengguna"
+        <Link
+          className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
           to="/admin/users"
-          variant="primary"
-        />
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <IconUsers className="size-4.5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">Manajemen Pengguna</span>
+            <span className="block text-xs text-muted-foreground">
+              Kelola akun dan hak akses staf IBS.
+            </span>
+          </span>
+        </Link>
+        <Link
+          className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
+          to="/laporan/rekap"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+            <IconChartBar className="size-4.5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">Rekapitulasi Operasional</span>
+            <span className="block text-xs text-muted-foreground">
+              Rekap laporan dan indikator keselamatan pasien.
+            </span>
+          </span>
+        </Link>
       </div>
+
+      <RecentIncidents
+        emptyDescription="Laporan insiden dari seluruh unit akan tampil di sini."
+        emptyTitle="Belum ada laporan"
+        incidents={incidents.slice(0, 7)}
+        title="Laporan Terbaru"
+      />
     </div>
   )
 }
 
 // ─── Public landing (not logged in) ─────────────────────────────
+
 function PublicLanding() {
   return (
-    <div className="flex flex-col items-center gap-6 py-8 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
-        <IconShieldCheck className="size-8 text-primary" aria-hidden="true" />
-      </div>
+    <div className="mx-auto flex max-w-xl flex-col items-center gap-5 py-6 text-center">
+      <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <IconShieldCheck className="size-7" />
+      </span>
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Sistem Informasi Pelaporan Insiden Keselamatan Pasien
-        </h1>
-        <p className="max-w-lg text-sm text-muted-foreground leading-relaxed">
-          Instalasi Bedah Sentral — RSUD Prof. Dr. W. Z. Johannes Kupang
+        <h2 className="text-xl font-semibold tracking-tight text-foreground text-balance sm:text-2xl">
+        Pelaporan insiden yang tertib, terlacak, dan rahasia
+        </h2>
+        <p className="text-sm leading-6 text-muted-foreground">
+          Masuk dengan akun staf IBS untuk membuat laporan insiden, menindaklanjuti verifikasi,
+          dan memantau rekapitulasi keselamatan pasien.
         </p>
       </div>
-      <div className="flex flex-col gap-2 text-xs text-muted-foreground max-w-sm">
-        <p>Silakan masuk menggunakan akun staf IBS untuk mengakses sistem pelaporan.</p>
-      </div>
-      <Link
-        to="/login"
-        className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-      >
-        <IconCheck className="size-4" />
+      <Button render={<Link to="/login" />} size="lg">
         Masuk ke Sistem
-      </Link>
+        <IconArrowRight data-icon="inline-end" />
+      </Button>
     </div>
   )
 }
 
 // ─── Loading skeleton ────────────────────────────────────────────
+
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-6" aria-busy="true" aria-label="Memuat dashboard...">
+    <div aria-busy="true" aria-label="Memuat dashboard" className="flex flex-col gap-6">
+      <Skeleton className="h-24 w-full rounded-xl" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-20 animate-pulse rounded-lg border bg-muted/40" />
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton className="h-24 w-full rounded-xl" key={index} />
         ))}
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[0, 1].map((i) => (
-          <div key={i} className="h-24 animate-pulse rounded-lg border bg-muted/40" />
-        ))}
-      </div>
+      <Skeleton className="h-72 w-full rounded-xl" />
     </div>
   )
 }
 
 // ─── Main page ───────────────────────────────────────────────────
+
 export function HomePage() {
   const { user, isLoading: authLoading } = useAuth()
 
   const [incidents, setIncidents] = useState<IncidentReport[]>([])
   const [summary, setSummary] = useState<RecapSummary | null>(null)
   const [dataLoading, setDataLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (authLoading || !user) {
@@ -659,22 +727,21 @@ export function HomePage() {
     let isMounted = true
 
     async function loadDashboard() {
-      if (isMounted) setDataLoading(true)
-      try {
-        const [incData, recapData] = await Promise.allSettled([
-          fetchIncidents(),
-          fetchOperationalRecap(),
-        ])
-
-        if (!isMounted) return
-
-        if (incData.status === "fulfilled") setIncidents(incData.value)
-        if (recapData.status === "fulfilled") setSummary(recapData.value.summary)
-      } catch {
-        // silently fail; show empty states
-      } finally {
-        if (isMounted) setDataLoading(false)
+      if (isMounted) {
+        setDataLoading(true)
+        setLoadError(false)
       }
+      const [incData, recapData] = await Promise.allSettled([
+        fetchIncidents(),
+        fetchOperationalRecap(),
+      ])
+
+      if (!isMounted) return
+
+      if (incData.status === "fulfilled") setIncidents(incData.value)
+      if (recapData.status === "fulfilled") setSummary(recapData.value.summary)
+      if (incData.status === "rejected") setLoadError(true)
+      setDataLoading(false)
     }
 
     void loadDashboard()
@@ -682,41 +749,47 @@ export function HomePage() {
     return () => {
       isMounted = false
     }
-  }, [user, authLoading])
+  }, [user, authLoading, reloadKey])
 
   const isLoading = authLoading || dataLoading
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       {/* Page header */}
-      <header className="border-b pb-5">
+      <header className="flex flex-col gap-3 border-b pb-5 md:flex-row md:items-end md:justify-between">
         {user ? (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <IconClock className="size-4 text-muted-foreground" aria-hidden="true" />
-              <span className="text-xs text-muted-foreground">
+          <>
+            <div className="flex flex-col gap-1">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <IconClock aria-hidden="true" className="size-3.5" />
                 {new Date().toLocaleDateString("id-ID", {
                   weekday: "long",
-                  year: "numeric",
-                  month: "long",
                   day: "numeric",
+                  month: "long",
+                  year: "numeric",
                 })}
               </span>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                Selamat datang, {user.fullName.split(",")[0]}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {getRoleLabel(user.role)} · Instalasi Bedah Sentral (IBS)
+              </p>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              Selamat datang, {user.fullName.split(",")[0]}
+            {user.role !== "ADMINISTRATOR" && (
+              <Button className="mt-1 md:mt-0" render={<Link to="/laporan/baru" />}>
+                <IconFilePlus data-icon="inline-start" />
+                Lapor Insiden
+              </Button>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              SIP-IKP — Sistem Pelaporan Insiden Keselamatan Pasien
             </h1>
             <p className="text-sm text-muted-foreground">
-              {getRoleLabel(user.role)} · Instalasi Bedah Sentral (IBS)
-            </p>
-          </div>
-        ) : (
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              SIP-IKP — Sistem Pelaporan Insiden Keselamatan Pasien IBS
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              RSUD Prof. Dr. W. Z. Johannes Kupang
+              Instalasi Bedah Sentral — RSUD Prof. Dr. W. Z. Johannes Kupang
             </p>
           </div>
         )}
@@ -727,12 +800,17 @@ export function HomePage() {
         <PublicLanding />
       ) : isLoading ? (
         <DashboardSkeleton />
+      ) : loadError ? (
+        <ErrorState
+          message="Data dashboard tidak dapat dimuat. Periksa koneksi Anda lalu muat ulang."
+          onRetry={() => { setReloadKey((key) => key + 1); }}
+        />
       ) : user.role === "TENAGA_KESEHATAN" ? (
-        <NakesDashboard incidents={incidents} isLoading={dataLoading} />
+        <NakesDashboard incidents={incidents} />
       ) : user.role === "KEPALA_RUANGAN" ? (
-        <KepalaRuanganDashboard incidents={incidents} isLoading={dataLoading} />
+        <KepalaRuanganDashboard incidents={incidents} />
       ) : user.role === "KOMITE_PMKP" ? (
-        <PmkpDashboard incidents={incidents} summary={summary} isLoading={dataLoading} />
+        <PmkpDashboard incidents={incidents} summary={summary} />
       ) : (
         <AdminDashboard incidents={incidents} />
       )}

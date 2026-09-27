@@ -1,32 +1,162 @@
 import { useEffect, useState, type SyntheticEvent } from "react"
 import {
-  IconAlertCircle,
-  IconArrowLeft,
+  IconChevronDown,
+  IconChevronRight,
   IconFilter,
-  IconFolder,
   IconPrinter,
   IconRefresh,
   IconShieldCheck,
 } from "@tabler/icons-react"
 import { useNavigate } from "react-router"
 
+import { EmptyState } from "@/components/shared/empty-state"
+import { ErrorState } from "@/components/shared/error-state"
+import { TableSkeleton } from "@/components/shared/loading-states"
+import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { cn } from "@/lib/utils"
 import { fetchOperationalRecap } from "../api/incidents-api"
 import { IncidentStatusBadge } from "../components/incident-status-badge"
 import { RiskBadge } from "../components/risk-badge"
+import { INCIDENT_TARGET_LABELS, INCIDENT_TYPE_SHORT_LABELS } from "../lib/labels"
 import type { OperationalRecapFilters, OperationalRecapPayload } from "../types/incident"
+
+const TYPE_OPTIONS = [
+  { value: "KNC", label: "KNC (Near Miss)" },
+  { value: "KTC", label: "KTC (No Harm)" },
+  { value: "KTD", label: "KTD (Adverse Event)" },
+  { value: "SENTINEL", label: "Sentinel" },
+]
+
+const RISK_OPTIONS = [
+  { value: "BIRU", label: "Biru (Rendah)" },
+  { value: "HIJAU", label: "Hijau (Sedang)" },
+  { value: "KUNING", label: "Kuning (Tinggi)" },
+  { value: "MERAH", label: "Merah (Ekstrem)" },
+  { value: "UNASSIGNED", label: "Belum dinilai" },
+]
+
+const STATUS_OPTIONS = [
+  { value: "SUBMITTED", label: "Terkirim" },
+  { value: "UNDER_REVIEW", label: "Sedang Ditinjau" },
+  { value: "SIMPLE_INVESTIGATION", label: "Investigasi Sederhana" },
+  { value: "PMKP_REVIEW", label: "Tinjauan PMKP" },
+  { value: "COMPLETED_BY_UNIT", label: "Selesai di Unit" },
+  { value: "COMPLETED", label: "Kasus Ditutup" },
+]
+
+const TARGET_OPTIONS = [
+  { value: "PASIEN", label: "Pasien" },
+  { value: "KARYAWAN_NAKES", label: "Karyawan / Nakes" },
+  { value: "PENGUNJUNG", label: "Pengunjung" },
+  { value: "PENDAMPING", label: "Pendamping" },
+  { value: "KELUARGA_PASIEN", label: "Keluarga Pasien" },
+  { value: "LAIN_LAIN", label: "Lain-lain" },
+]
+
+const EMPTY_FILTERS: OperationalRecapFilters = {
+  startDate: "",
+  endDate: "",
+  incidentType: "",
+  riskGrade: "",
+  status: "",
+  incidentTarget: "",
+}
+
+const selectClass =
+  "h-10 w-full appearance-none rounded-lg border border-input bg-transparent px-2.5 pr-8 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:h-8 md:text-sm dark:bg-input/30"
+
+function FilterSelect({
+  id,
+  label,
+  value,
+  options,
+  allLabel,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  options: Array<{ value: string; label: string }>
+  allLabel: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <div className="relative">
+        <select
+          className={selectClass}
+          id={id}
+          onChange={(event) => {
+            onChange(event.target.value)
+          }}
+          value={value}
+        >
+          <option value="">{allLabel}</option>
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <IconChevronDown
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+        />
+      </div>
+    </Field>
+  )
+}
+
+function BreakdownBar({
+  label,
+  value,
+  max,
+  barClass,
+}: {
+  label: string
+  value: number
+  max: number
+  barClass?: string
+}) {
+  const width = max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <strong className="font-semibold text-foreground tabular-nums">{value}</strong>
+      </div>
+      <div
+        aria-hidden="true"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+        role="presentation"
+      >
+        <div
+          className={cn("h-full rounded-full bg-primary/60", barClass)}
+          style={{ width: value > 0 ? `${String(width)}%` : "0%" }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export function IncidentsRecapPage() {
   const navigate = useNavigate()
 
-  const [filters, setFilters] = useState<OperationalRecapFilters>({
-    startDate: "",
-    endDate: "",
-    incidentType: "",
-    riskGrade: "",
-    status: "",
-    incidentTarget: "",
-  })
+  const [filters, setFilters] = useState<OperationalRecapFilters>(EMPTY_FILTERS)
+  const [showFilters, setShowFilters] = useState(false)
 
   const [recapData, setRecapData] = useState<OperationalRecapPayload | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -77,424 +207,466 @@ export function IncidentsRecapPage() {
   }
 
   const handleResetFilters = () => {
-    const emptyFilters: OperationalRecapFilters = {
-      startDate: "",
-      endDate: "",
-      incidentType: "",
-      riskGrade: "",
-      status: "",
-      incidentTarget: "",
-    }
-    setFilters(emptyFilters)
-    void loadRecap(emptyFilters)
+    setFilters(EMPTY_FILTERS)
+    void loadRecap(EMPTY_FILTERS)
   }
+
+  const activeFilterCount = Object.values(filters).filter((value) => value !== "" && value !== null)
+    .length
 
   const summary = recapData?.summary
   const items = recapData?.items ?? []
+  const maxRisk = summary
+    ? Math.max(
+        summary.byRiskGrade.BIRU,
+        summary.byRiskGrade.HIJAU,
+        summary.byRiskGrade.KUNING,
+        summary.byRiskGrade.MERAH,
+        1,
+      )
+    : 1
+  const maxType = summary
+    ? Math.max(
+        summary.byIncidentType.KNC,
+        summary.byIncidentType.KTC,
+        summary.byIncidentType.KTD,
+        summary.byIncidentType.SENTINEL,
+        1,
+      )
+    : 1
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8 print:p-0">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 print:max-w-none print:p-0">
       {/* 1. Header Bar */}
-      <header className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between no-print">
-        <div className="flex items-center gap-3">
-          <Button
-            className="size-8 text-muted-foreground"
-            onClick={() => {
-              void navigate("/laporan")
-            }}
-            size="icon"
-            variant="ghost"
-          >
-            <IconArrowLeft className="size-4" />
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold tracking-wider text-primary uppercase">
-                Instalasi Bedah Sentral (IBS)
-              </span>
-              <span className="text-muted-foreground">&bull;</span>
-              <span className="text-xs text-muted-foreground">RSUD Prof. Dr. W. Z. Johannes</span>
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              Rekapitulasi Pelaporan &amp; Indikator Keselamatan Pasien
-            </h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Pemantauan agregat insiden kamar operasi, distribusi pita risiko, dan kepatuhan batas
-              waktu pelaporan 48 jam.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            className="gap-1.5 text-xs"
-            onClick={() => {
-              void loadRecap(filters)
-            }}
-            size="sm"
-            variant="outline"
-          >
-            <IconRefresh className="size-3.5" />
-            <span>Segarkan</span>
-          </Button>
-          <Button
-            className="gap-1.5 text-xs font-semibold"
-            onClick={() => {
-              window.print()
-            }}
-            size="sm"
-          >
-            <IconPrinter className="size-4" />
-            <span>Cetak Rekapitulasi</span>
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        className="no-print"
+        actions={
+          <>
+            <Button
+              className="no-print"
+              disabled={isLoading}
+              onClick={() => {
+                void loadRecap(filters)
+              }}
+              size="sm"
+              variant="outline"
+            >
+              <IconRefresh data-icon="inline-start" />
+              <span className="hidden sm:inline">Segarkan</span>
+            </Button>
+            <Button
+              className="no-print"
+              onClick={() => {
+                window.print()
+              }}
+              size="sm"
+            >
+              <IconPrinter data-icon="inline-start" />
+              Cetak
+            </Button>
+          </>
+        }
+        breadcrumbs={[{ label: "Beranda", to: "/" }, { label: "Rekapitulasi" }]}
+        description="Rekap agregat insiden IBS: distribusi jenis, pita risiko, dan status alur pelaporan."
+        title="Rekapitulasi & Indikator Keselamatan Pasien"
+      />
 
       {/* Header specifically for print view */}
-      <div className="hidden print:block border-b-2 border-black pb-3 text-center mb-4">
+      <div className="mb-4 hidden border-b-2 border-black pb-3 text-center print:block">
         <h2 className="text-sm font-bold uppercase">
           RSUD Prof. Dr. W. Z. Johannes Kupang &bull; Instalasi Bedah Sentral (IBS)
         </h2>
-        <h1 className="text-base font-extrabold uppercase mt-1">
+        <h1 className="mt-1 text-base font-extrabold uppercase">
           Laporan Rekapitulasi Operasional Insiden Keselamatan Pasien
         </h1>
-        <p className="text-[10px] text-slate-600 mt-1">
-          Dicetak pada: {new Date().toLocaleString("id-ID")} WITA &bull; Kerahasiaan Terjaga (Zero
-          PII Eksternal)
+        <p className="mt-1 text-[10px] text-slate-600">
+          Dicetak pada: {new Date().toLocaleString("id-ID")} WITA &bull; Dokumen rahasia —
+          rekapitulasi agregat tanpa identitas pasien
         </p>
       </div>
 
       {/* 2. Operational Filter Bar */}
       <form
-        className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs no-print text-xs"
+        className="flex flex-col rounded-xl border bg-card no-print"
         onSubmit={handleFilterSubmit}
       >
-        <div className="flex items-center gap-2 border-b pb-2 font-semibold text-foreground">
-          <IconFilter className="size-4 text-primary" />
-          <span>Filter Laporan Operasional</span>
-        </div>
+        <button
+          aria-controls="recap-filters"
+          aria-expanded={showFilters}
+          className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+          onClick={() => { setShowFilters((open) => !open); }}
+          type="button"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <IconFilter aria-hidden="true" className="size-4 text-primary" />
+            Filter Laporan
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
+                {activeFilterCount} aktif
+              </span>
+            )}
+          </span>
+          <IconChevronDown
+            aria-hidden="true"
+            className={cn(
+              "size-4 text-muted-foreground transition-transform",
+              showFilters && "rotate-180",
+            )}
+          />
+        </button>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground" htmlFor="f_start_date">
-              Dari Tanggal
-            </label>
-            <input
-              className="rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-              id="f_start_date"
-              onChange={(e) => {
-                setFilters({ ...filters, startDate: e.target.value })
-              }}
-              type="date"
-              value={filters.startDate ?? ""}
-            />
+        {showFilters && (
+          <div className="flex flex-col gap-4 border-t px-4 py-4" id="recap-filters">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field>
+                <FieldLabel htmlFor="f_start_date">Dari Tanggal</FieldLabel>
+                <Input
+                  className="h-10"
+                  id="f_start_date"
+                  onChange={(e) => {
+                    setFilters({ ...filters, startDate: e.target.value })
+                  }}
+                  type="date"
+                  value={filters.startDate ?? ""}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="f_end_date">Sampai Tanggal</FieldLabel>
+                <Input
+                  className="h-10"
+                  id="f_end_date"
+                  onChange={(e) => {
+                    setFilters({ ...filters, endDate: e.target.value })
+                  }}
+                  type="date"
+                  value={filters.endDate ?? ""}
+                />
+              </Field>
+              <FilterSelect
+                allLabel="Semua Jenis"
+                id="f_type"
+                label="Jenis Insiden"
+                onChange={(value) => {
+                  setFilters({ ...filters, incidentType: value })
+                }}
+                options={TYPE_OPTIONS}
+                value={filters.incidentType ?? ""}
+              />
+              <FilterSelect
+                allLabel="Semua Pita"
+                id="f_risk"
+                label="Pita Risiko"
+                onChange={(value) => {
+                  setFilters({ ...filters, riskGrade: value })
+                }}
+                options={RISK_OPTIONS}
+                value={filters.riskGrade ?? ""}
+              />
+              <FilterSelect
+                allLabel="Semua Status"
+                id="f_status"
+                label="Status Alur"
+                onChange={(value) => {
+                  setFilters({ ...filters, status: value })
+                }}
+                options={STATUS_OPTIONS}
+                value={filters.status ?? ""}
+              />
+              <FilterSelect
+                allLabel="Semua Sasaran"
+                id="f_target"
+                label="Sasaran Insiden"
+                onChange={(value) => {
+                  setFilters({ ...filters, incidentTarget: value })
+                }}
+                options={TARGET_OPTIONS}
+                value={filters.incidentTarget ?? ""}
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t pt-3">
+              <Button onClick={handleResetFilters} size="sm" type="button" variant="ghost">
+                Reset Filter
+              </Button>
+              <Button size="sm" type="submit">
+                Terapkan Filter
+              </Button>
+            </div>
           </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground" htmlFor="f_end_date">
-              Sampai Tanggal
-            </label>
-            <input
-              className="rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-              id="f_end_date"
-              onChange={(e) => {
-                setFilters({ ...filters, endDate: e.target.value })
-              }}
-              type="date"
-              value={filters.endDate ?? ""}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground" htmlFor="f_type">
-              Jenis Insiden
-            </label>
-            <select
-              className="rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-              id="f_type"
-              onChange={(e) => {
-                setFilters({ ...filters, incidentType: e.target.value })
-              }}
-              value={filters.incidentType ?? ""}
-            >
-              <option value="">Semua Jenis</option>
-              <option value="KNC">KNC (Near Miss)</option>
-              <option value="KTC">KTC (No Harm)</option>
-              <option value="KTD">KTD (Adverse Event)</option>
-              <option value="SENTINEL">SENTINEL</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground" htmlFor="f_risk">
-              Pita Risiko
-            </label>
-            <select
-              className="rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-              id="f_risk"
-              onChange={(e) => {
-                setFilters({ ...filters, riskGrade: e.target.value })
-              }}
-              value={filters.riskGrade ?? ""}
-            >
-              <option value="">Semua Pita</option>
-              <option value="BIRU">BIRU (Rendah)</option>
-              <option value="HIJAU">HIJAU (Sedang)</option>
-              <option value="KUNING">KUNING (Tinggi)</option>
-              <option value="MERAH">MERAH (Ekstrem)</option>
-              <option value="UNASSIGNED">Belum Ditentukan</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground" htmlFor="f_status">
-              Status Alur
-            </label>
-            <select
-              className="rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-              id="f_status"
-              onChange={(e) => {
-                setFilters({ ...filters, status: e.target.value })
-              }}
-              value={filters.status ?? ""}
-            >
-              <option value="">Semua Status</option>
-              <option value="SUBMITTED">Terkirim</option>
-              <option value="UNDER_REVIEW">Sedang Ditinjau</option>
-              <option value="SIMPLE_INVESTIGATION">Investigasi Sederhana</option>
-              <option value="PMKP_REVIEW">Tinjauan PMKP</option>
-              <option value="COMPLETED_BY_UNIT">Selesai di Unit</option>
-              <option value="COMPLETED">Kasus Selesai Ditutup</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-medium text-muted-foreground" htmlFor="f_target">
-              Sasaran Insiden
-            </label>
-            <select
-              className="rounded-md border bg-background px-2.5 py-1.5 text-xs focus:border-primary focus:outline-none"
-              id="f_target"
-              onChange={(e) => {
-                setFilters({ ...filters, incidentTarget: e.target.value })
-              }}
-              value={filters.incidentTarget ?? ""}
-            >
-              <option value="">Semua Sasaran</option>
-              <option value="PASIEN">Pasien</option>
-              <option value="KARYAWAN_NAKES">Karyawan / Nakes</option>
-              <option value="PENGUNJUNG">Pengunjung</option>
-              <option value="PENDAMPING">Pendamping</option>
-              <option value="KELUARGA_PASIEN">Keluarga Pasien</option>
-              <option value="LAIN_LAIN">Lain-lain</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button
-            className="text-xs"
-            onClick={handleResetFilters}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            Reset Filter
-          </Button>
-          <Button className="text-xs" size="sm" type="submit">
-            Terapkan Filter
-          </Button>
-        </div>
+        )}
       </form>
 
       {errorMessage && (
-        <div
-          aria-live="polite"
-          className="flex items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-xs font-medium text-destructive no-print"
-          role="alert"
-        >
-          <IconAlertCircle className="size-4 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
+        <ErrorState
+          className="no-print"
+          message={errorMessage}
+          onRetry={() => {
+            void loadRecap(filters)
+          }}
+        />
       )}
 
       {/* 3. Summary Operational Cards */}
-      {summary && (
-        <section aria-labelledby="summary-metrics-title" className="flex flex-col gap-3">
+      {summary && !isLoading && (
+        <section aria-labelledby="summary-metrics-title" className="grid gap-3 lg:grid-cols-3">
           <h2 className="sr-only" id="summary-metrics-title">
             Ringkasan Metrik
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 text-xs">
-            {/* Total Reports */}
-            <div className="flex flex-col justify-between rounded-xl border bg-card p-4 shadow-xs print:border-black print:p-2">
-              <span className="font-semibold text-muted-foreground print:text-black">
-                Total Laporan
-              </span>
-              <p className="mt-2 text-2xl font-bold text-foreground print:text-black">
-                {summary.totalReports}{" "}
-                <span className="text-xs font-normal text-muted-foreground">laporan</span>
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground print:text-black">
-                Dalam rentang filter terpilih
-              </p>
-            </div>
 
-            {/* Incident Type Breakdown */}
-            <div className="flex flex-col justify-between rounded-xl border bg-card p-4 shadow-xs print:border-black print:p-2">
-              <span className="font-semibold text-muted-foreground print:text-black">
-                Tipe Insiden
-              </span>
-              <div className="mt-2 grid grid-cols-2 gap-1 text-[11px]">
-                <span>
-                  KNC: <strong>{summary.byIncidentType.KNC}</strong>
-                </span>
-                <span>
-                  KTC: <strong>{summary.byIncidentType.KTC}</strong>
-                </span>
-                <span>
-                  KTD: <strong>{summary.byIncidentType.KTD}</strong>
-                </span>
-                <span>
-                  Sentinel:{" "}
-                  <strong className="text-rose-600 print:text-black">
-                    {summary.byIncidentType.SENTINEL}
-                  </strong>
-                </span>
-              </div>
-              <p className="mt-1 text-[10px] text-muted-foreground print:text-black">
-                Klasifikasi standar KNKP
+          {/* Total */}
+          <Card className="print:rounded-none print:border-black print:shadow-none">
+            <CardContent className="flex h-full flex-col justify-center gap-1 py-5">
+              <p className="text-xs font-medium text-muted-foreground">Total Laporan</p>
+              <p className="font-heading text-4xl font-semibold text-foreground tabular-nums">
+                {summary.totalReports}
               </p>
-            </div>
-
-            {/* Risk Grade Breakdown */}
-            <div className="flex flex-col justify-between rounded-xl border bg-card p-4 shadow-xs print:border-black print:p-2">
-              <span className="font-semibold text-muted-foreground print:text-black">
-                Pita Risiko
-              </span>
-              <div className="mt-2 grid grid-cols-2 gap-1 text-[11px]">
-                <span className="text-sky-700 print:text-black">
-                  Biru: <strong>{summary.byRiskGrade.BIRU}</strong>
-                </span>
-                <span className="text-emerald-700 print:text-black">
-                  Hijau: <strong>{summary.byRiskGrade.HIJAU}</strong>
-                </span>
-                <span className="text-amber-700 print:text-black">
-                  Kuning: <strong>{summary.byRiskGrade.KUNING}</strong>
-                </span>
-                <span className="text-rose-700 print:text-black">
-                  Merah: <strong>{summary.byRiskGrade.MERAH}</strong>
-                </span>
-              </div>
-              <p className="mt-1 text-[10px] text-muted-foreground print:text-black">
-                Belum dinilai: {summary.byRiskGrade.UNASSIGNED}
+              <p className="text-xs text-muted-foreground">
+                Sesuai rentang filter yang diterapkan
               </p>
-            </div>
+            </CardContent>
+          </Card>
 
-              {/* SLA summary card removed — SLA disabled for MVP */}
-          </div>
+          {/* Risk breakdown */}
+          <Card className="print:rounded-none print:border-black print:shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold">Distribusi Pita Risiko</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              <BreakdownBar
+                barClass="bg-risk-blue-foreground/70"
+                label="Biru (Rendah)"
+                max={maxRisk}
+                value={summary.byRiskGrade.BIRU}
+              />
+              <BreakdownBar
+                barClass="bg-risk-green-foreground/70"
+                label="Hijau (Sedang)"
+                max={maxRisk}
+                value={summary.byRiskGrade.HIJAU}
+              />
+              <BreakdownBar
+                barClass="bg-risk-yellow-foreground/70"
+                label="Kuning (Tinggi)"
+                max={maxRisk}
+                value={summary.byRiskGrade.KUNING}
+              />
+              <BreakdownBar
+                barClass="bg-risk-red-foreground/70"
+                label="Merah (Ekstrem)"
+                max={maxRisk}
+                value={summary.byRiskGrade.MERAH}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Belum dinilai: {summary.byRiskGrade.UNASSIGNED} laporan
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Type breakdown */}
+          <Card className="print:rounded-none print:border-black print:shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-semibold">Distribusi Jenis Insiden</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2.5">
+              <BreakdownBar
+                label="KNC — Nyaris Cedera"
+                max={maxType}
+                value={summary.byIncidentType.KNC}
+              />
+              <BreakdownBar
+                label="KTC — Tidak Cedera"
+                max={maxType}
+                value={summary.byIncidentType.KTC}
+              />
+              <BreakdownBar
+                barClass="bg-status-warning-foreground/70"
+                label="KTD — Tidak Diharapkan"
+                max={maxType}
+                value={summary.byIncidentType.KTD}
+              />
+              <BreakdownBar
+                barClass="bg-risk-red-foreground/80"
+                label="Sentinel"
+                max={maxType}
+                value={summary.byIncidentType.SENTINEL}
+              />
+            </CardContent>
+          </Card>
         </section>
       )}
 
       {/* 4. Filtered Reports Table */}
       {isLoading ? (
-        <div className="flex min-h-48 items-center justify-center rounded-xl border bg-card p-8 no-print">
-          <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
-            <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span>Memuat data rekapitulasi...</span>
-          </div>
-        </div>
+        <TableSkeleton className="no-print" rows={6} />
       ) : items.length === 0 ? (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-xl border border-dashed bg-muted/20 p-8 text-center text-xs text-muted-foreground">
-          <IconFolder className="size-8 text-muted-foreground/40" />
-          <p className="font-semibold text-foreground">Tidak Ada Laporan yang Cocok</p>
-          <p>Ubah atau reset filter untuk menampilkan data insiden lainnya.</p>
-        </div>
+        <EmptyState
+          action={
+            activeFilterCount > 0 ? (
+              <Button onClick={handleResetFilters} size="sm" variant="outline">
+                Reset Filter
+              </Button>
+            ) : undefined
+          }
+          className="no-print py-14"
+          description="Tidak ada laporan yang cocok dengan filter terpilih pada periode ini."
+          title="Tidak ada laporan"
+        />
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-xs print:border-black print:shadow-none">
-          <table className="w-full text-left text-xs print:text-[10px]">
-            <thead className="border-b bg-muted/40 font-semibold text-muted-foreground print:border-black print:bg-slate-100 print:text-black">
-              <tr>
-                <th className="px-3 py-2.5">No. Laporan</th>
-                <th className="px-3 py-2.5">Waktu Insiden (WITA)</th>
-                <th className="px-3 py-2.5">Judul Insiden</th>
-                <th className="px-3 py-2.5">Jenis / Sasaran</th>
-                <th className="px-3 py-2.5">Lokasi Kamar</th>
-                <th className="px-3 py-2.5">Pita Risiko</th>
-                <th className="px-3 py-2.5">Status Alur</th>
-                <th className="px-3 py-2.5 text-right no-print">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y text-foreground print:divide-black">
-              {items.map((item) => (
-                <tr className="transition-colors hover:bg-muted/30" key={item.id}>
-                  <td className="px-3 py-2.5 font-mono font-bold whitespace-nowrap">
-                    {item.report_number ?? "DRAF"}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground print:text-black">
-                    {new Date(item.incident_datetime).toLocaleDateString("id-ID")}{" "}
-                    {new Date(item.incident_datetime).toLocaleTimeString("id-ID")}
-                  </td>
-                  <td className="max-w-xs px-3 py-2.5 font-medium text-foreground print:text-black">
-                    <span className="line-clamp-2">
-                      {item.incident_title || "(Draf Tanpa Judul)"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <span className="font-semibold">{item.incident_type}</span> &bull;{" "}
-                    <span className="text-muted-foreground print:text-black">
-                      {item.incident_target}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-muted-foreground print:text-black">
-                    {item.incident_location || "-"}
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <RiskBadge grade={item.risk_grade} />
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <IncidentStatusBadge status={item.status} />
-                  </td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap no-print">
-                    <div className="flex items-center justify-end gap-1.5">
+        <Card className="overflow-hidden py-0 print:rounded-none print:border-black print:shadow-none print:ring-0">
+          <CardContent className="p-0">
+            {/* Mobile cards (screen only) */}
+            <ul className="flex flex-col md:hidden print:hidden">
+              {items.map((item, index) => (
+                <li key={item.id}>
+                  <div className={cn("px-4 py-3.5", index > 0 && "border-t")}>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="line-clamp-2 text-sm font-medium text-foreground">
+                        {item.incident_title || "(Tanpa judul)"}
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                        {item.report_number ?? "DRAF"}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {INCIDENT_TYPE_SHORT_LABELS[item.incident_type]} ·{" "}
+                      {INCIDENT_TARGET_LABELS[item.incident_target]} ·{" "}
+                      {new Date(item.incident_datetime).toLocaleDateString("id-ID")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <IncidentStatusBadge status={item.status} />
+                      <RiskBadge grade={item.risk_grade} />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2 no-print">
                       <Button
-                        className="text-xs"
                         onClick={() => {
                           void navigate(`/laporan/${item.id}`)
                         }}
-                        size="sm"
-                        variant="ghost"
+                        size="xs"
+                        variant="outline"
                       >
                         Detail
+                        <IconChevronRight data-icon="inline-end" />
                       </Button>
                       <Button
-                        className="text-xs"
                         onClick={() => {
                           void navigate(`/laporan/${item.id}/cetak`)
                         }}
-                        size="sm"
-                        variant="outline"
+                        size="xs"
+                        variant="ghost"
                       >
+                        <IconPrinter data-icon="inline-start" />
                         Cetak
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+
+            {/* Desktop table (also used for print) */}
+            <div className="hidden overflow-x-auto md:block print:block">
+              <Table className="print:text-[10px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent print:border-black">
+                    <TableHead className="print:text-black">No. Laporan</TableHead>
+                    <TableHead className="print:text-black">Waktu Insiden</TableHead>
+                    <TableHead className="print:text-black">Judul Insiden</TableHead>
+                    <TableHead className="print:text-black">Jenis / Sasaran</TableHead>
+                    <TableHead className="print:text-black">Lokasi</TableHead>
+                    <TableHead className="print:text-black">Pita Risiko</TableHead>
+                    <TableHead className="print:text-black">Status</TableHead>
+                    <TableHead className="text-right no-print">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.id} className="print:border-black">
+                      <TableCell className="font-mono text-xs font-semibold whitespace-nowrap print:text-black">
+                        {item.report_number ?? "DRAF"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap print:text-black">
+                        {new Date(item.incident_datetime).toLocaleDateString("id-ID")}{" "}
+                        {new Date(item.incident_datetime).toLocaleTimeString("id-ID", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}{" "}
+                        {item.incident_timezone === "Asia/Makassar" ? "WITA" : ""}
+                      </TableCell>
+                      <TableCell className="max-w-xs font-medium print:text-black">
+                        <button
+                          className="line-clamp-2 text-left hover:text-primary hover:underline hover:underline-offset-2 no-print"
+                          onClick={() => {
+                            void navigate(`/laporan/${item.id}`)
+                          }}
+                          type="button"
+                        >
+                          {item.incident_title || "(Tanpa judul)"}
+                        </button>
+                        <span className="hidden print:inline">
+                          {item.incident_title || "(Tanpa judul)"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap print:text-black">
+                        <span className="font-semibold">
+                          {INCIDENT_TYPE_SHORT_LABELS[item.incident_type]}
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          · {INCIDENT_TARGET_LABELS[item.incident_target]}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground print:text-black">
+                        {item.incident_location || "-"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <RiskBadge grade={item.risk_grade} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <IncidentStatusBadge status={item.status} />
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap no-print">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            onClick={() => {
+                              void navigate(`/laporan/${item.id}`)
+                            }}
+                            size="xs"
+                            variant="ghost"
+                          >
+                            Detail
+                          </Button>
+                          <Button
+                            aria-label={`Cetak laporan ${item.report_number ?? item.id}`}
+                            onClick={() => {
+                              void navigate(`/laporan/${item.id}/cetak`)
+                            }}
+                            size="icon-xs"
+                            variant="outline"
+                          >
+                            <IconPrinter className="size-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Footer Info */}
-      <footer className="flex items-center justify-between border-t pt-4 text-xs text-muted-foreground no-print">
-        <span className="flex items-center gap-1.5">
-          <IconShieldCheck className="size-4 text-primary" />
+      <footer className="flex flex-col gap-1.5 border-t pt-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between no-print">
+        <span className="flex items-start gap-1.5">
+          <IconShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-primary" />
           <span>
-            Privasi Terjaga: Rekapitulasi agregat tidak menampilkan identitas nama atau rekam medis
+            Privasi terjaga — rekapitulasi agregat tidak menampilkan nama atau nomor rekam medis
             pasien.
           </span>
         </span>
-        <span className="font-mono text-[11px]">Total: {items.length} Laporan Ditampilkan</span>
+        <span className="font-mono text-[11px] tabular-nums">
+          {items.length} laporan ditampilkan
+        </span>
       </footer>
     </div>
   )

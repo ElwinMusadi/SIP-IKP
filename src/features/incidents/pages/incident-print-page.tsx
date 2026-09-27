@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import {
-  IconAlertCircle,
   IconArrowLeft,
   IconHeartbeat,
   IconPrinter,
@@ -9,6 +8,8 @@ import {
 } from "@tabler/icons-react"
 import { useNavigate, useParams } from "react-router"
 
+import { ErrorState } from "@/components/shared/error-state"
+import { InlineLoader } from "@/components/shared/loading-states"
 import { Button } from "@/components/ui/button"
 import { fetchIncidentPrint } from "../api/incidents-api"
 import type {
@@ -137,23 +138,21 @@ export function IncidentPrintPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center p-8 no-print">
-        <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
-          <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <span>Menyiapkan lembar cetak dokumen resmi...</span>
-        </div>
+      <div className="mx-auto flex min-h-[60vh] max-w-2xl items-center justify-center p-8 no-print">
+        <InlineLoader label="Menyiapkan lembar cetak dokumen resmi…" />
       </div>
     )
   }
 
   if (errorMessage || !report) {
     return (
-      <div className="mx-auto flex max-w-2xl flex-col items-center justify-center gap-4 p-8 text-center no-print">
-        <IconAlertCircle className="size-10 text-destructive" />
-        <h2 className="text-lg font-semibold">Gagal Membuka Dokumen Cetak</h2>
-        <p className="text-xs text-muted-foreground">
-          {errorMessage ?? "Laporan insiden tidak ditemukan atau Anda tidak memiliki akses."}
-        </p>
+      <div className="mx-auto flex max-w-2xl flex-col items-center justify-center gap-4 p-8 no-print">
+        <ErrorState
+          message={errorMessage ?? "Laporan insiden tidak ditemukan atau Anda tidak memiliki akses."}
+          onRetry={() => void loadPrintData()}
+          retryLabel="Coba Lagi"
+          title="Gagal membuka dokumen cetak"
+        />
         <Button onClick={() => void navigate("/laporan")} size="sm" variant="outline">
           Kembali ke Daftar Laporan
         </Button>
@@ -170,48 +169,47 @@ export function IncidentPrintPage() {
     : new Date().toLocaleString("id-ID") + " WITA"
 
   return (
-    <div className="min-h-screen bg-slate-100 py-6 text-slate-900 print:bg-white print:p-0 print:text-black">
+    <div className="min-h-screen bg-muted/60 py-6 text-slate-900 print:bg-white print:p-0 print:text-black">
       {/* 1. Top Non-Printed Action Bar */}
-      <div className="no-print mx-auto mb-6 flex max-w-4xl items-center justify-between gap-4 rounded-xl border bg-card px-6 py-4 shadow-sm">
-        <div className="flex items-center gap-3">
+      <div className="no-print mx-auto mb-6 flex max-w-4xl flex-col gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-2">
           <Button
-            className="size-8 text-muted-foreground"
+            aria-label="Kembali"
+            className="shrink-0 text-muted-foreground"
             onClick={() => void navigate(-1)}
             size="icon"
             variant="ghost"
           >
             <IconArrowLeft className="size-4" />
           </Button>
-          <div>
-            <h1 className="text-sm font-bold text-foreground">
-              Pratinjau Cetak Formulir IKP (A4 Portrait)
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold text-foreground">
+              Pratinjau Cetak Formulir IKP (A4)
             </h1>
             <p className="text-[11px] text-muted-foreground">
-              Gunakan opsi cetak peramban atau "Save as PDF" untuk mencetak dokumen akreditasi
-              resmi.
+              Gunakan cetak peramban atau "Save as PDF" untuk dokumen akreditasi resmi.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex shrink-0 items-center gap-2 pl-10 sm:pl-0">
           <Button
-            className="gap-1.5 text-xs"
             onClick={() => void loadPrintData()}
             size="sm"
             variant="outline"
           >
-            <IconRefresh className="size-3.5" />
-            <span>Segarkan Data</span>
+            <IconRefresh data-icon="inline-start" />
+            <span className="hidden sm:inline">Segarkan</span>
           </Button>
           <Button
-            className="gap-1.5 text-xs font-semibold"
+            className="font-medium"
             onClick={() => {
               window.print()
             }}
             size="sm"
           >
-            <IconPrinter className="size-4" />
-            <span>Cetak Dokumen (Print)</span>
+            <IconPrinter data-icon="inline-start" />
+            Cetak Dokumen
           </Button>
         </div>
       </div>

@@ -1,17 +1,44 @@
 import { useEffect, useState } from "react"
 import {
-  IconAlertCircle,
   IconCheck,
+  IconChevronDown,
+  IconCircleCheck,
   IconEdit,
   IconPlus,
   IconRefresh,
   IconSearch,
   IconUserOff,
   IconUsers,
-  IconX,
 } from "@tabler/icons-react"
 
+import { EmptyState } from "@/components/shared/empty-state"
+import { ErrorState } from "@/components/shared/error-state"
+import { TableSkeleton } from "@/components/shared/loading-states"
+import { PageHeader } from "@/components/shared/page-header"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
+import { Spinner } from "@/components/ui/spinner"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { useAuth } from "@/lib/use-auth"
 import { cn } from "@/lib/utils"
 import {
@@ -30,49 +57,50 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: "ADMINISTRATOR", label: "Administrator" },
 ]
 
+const ROLE_BADGE_CLASS: Record<UserRole, string> = {
+  TENAGA_KESEHATAN: "bg-status-info text-status-info-foreground",
+  KEPALA_RUANGAN: "bg-primary/10 text-primary",
+  KOMITE_PMKP: "bg-status-pending text-status-pending-foreground",
+  ADMINISTRATOR: "bg-status-warning text-status-warning-foreground",
+}
+
 function roleLabel(role: UserRole): string {
   return ROLES.find((r) => r.value === role)?.label ?? role
 }
 
 function RoleBadge({ role }: { role: UserRole }) {
-  const colorMap: Record<UserRole, string> = {
-    TENAGA_KESEHATAN:
-      "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300",
-    KEPALA_RUANGAN:
-      "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300",
-    KOMITE_PMKP:
-      "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-300",
-    ADMINISTRATOR:
-      "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300",
-  }
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium",
-        colorMap[role],
-      )}
-    >
+    <Badge className={cn("border-transparent font-medium", ROLE_BADGE_CLASS[role])} variant="outline">
       {roleLabel(role)}
-    </span>
+    </Badge>
   )
 }
 
 function StatusBadge({ isActive }: { isActive: boolean }) {
-  if (isActive) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
-        <IconCheck className="size-3" aria-hidden="true" />
-        Aktif
-      </span>
-    )
-  }
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
-      <IconUserOff className="size-3" aria-hidden="true" />
-      Nonaktif
-    </span>
+    <Badge
+      className={cn(
+        "gap-1.5 border-transparent font-medium",
+        isActive
+          ? "bg-status-success text-status-success-foreground"
+          : "bg-status-neutral text-status-neutral-foreground",
+      )}
+      variant="outline"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-1.5 rounded-full",
+          isActive ? "bg-status-success-foreground" : "bg-status-neutral-foreground/60",
+        )}
+      />
+      {isActive ? "Aktif" : "Nonaktif"}
+    </Badge>
   )
 }
+
+const selectClass =
+  "h-10 w-full appearance-none rounded-lg border border-input bg-transparent px-2.5 pr-8 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:h-8 md:text-sm dark:bg-input/30"
 
 // ─── Create / Edit dialog ─────────────────────────────────────────
 interface UserFormProps {
@@ -120,201 +148,174 @@ function UserFormDialog({ user, csrfToken, onSuccess, onClose }: UserFormProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
-      {/* Panel */}
-      <div
-        className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="user-form-title"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground" id="user-form-title">
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open && !isSubmitting) onClose()
+      }}
+      open
+    >
+      <DialogContent className="gap-0 p-0 sm:max-w-md">
+        <DialogHeader className="border-b px-4 py-3.5 pr-14 sm:px-5 sm:pr-14">
+          <DialogTitle className="text-sm sm:text-base">
             {isEdit ? "Edit Pengguna" : "Tambah Pengguna Baru"}
-          </h2>
-          <Button onClick={onClose} size="icon" variant="ghost" className="size-7" aria-label="Tutup">
-            <IconX className="size-4" />
-          </Button>
-        </div>
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {isEdit
+              ? "Perbarui data akun staf. Nama pengguna tidak dapat diubah."
+              : "Buat akun staf baru untuk mengakses SIP-IKP sesuai perannya."}
+          </DialogDescription>
+        </DialogHeader>
 
-        {errorMessage && (
-          <div
-            aria-live="polite"
-            className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive"
-            role="alert"
-          >
-            {errorMessage}
-          </div>
-        )}
+        <form
+          className="flex max-h-[70dvh] flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-5"
+          onSubmit={(e) => {
+            void handleSubmit(e)
+          }}
+        >
+          {errorMessage && (
+            <p
+              className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs font-medium text-destructive"
+              role="alert"
+            >
+              {errorMessage}
+            </p>
+          )}
 
-        <form className="flex flex-col gap-3" onSubmit={(e) => { void handleSubmit(e) }}>
           {!isEdit && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-foreground" htmlFor="uf-username">
-                Username <span className="text-destructive">*</span>
-              </label>
-              <input
+            <Field>
+              <FieldLabel htmlFor="uf-username">
+                Nama Pengguna <span aria-hidden="true" className="text-destructive">*</span>
+              </FieldLabel>
+              <Input
                 autoComplete="off"
-                className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-10"
                 id="uf-username"
-                onChange={(e) => { setUsername(e.target.value) }}
+                onChange={(e) => {
+                  setUsername(e.target.value)
+                }}
                 placeholder="Contoh: nakes_ibs"
                 required
                 type="text"
                 value={username}
               />
-              <p className="text-[11px] text-muted-foreground">
+              <FieldDescription>
                 Huruf kecil, angka, underscore. Tidak dapat diubah setelah dibuat.
-              </p>
-            </div>
+              </FieldDescription>
+            </Field>
           )}
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-foreground" htmlFor="uf-fullname">
-              Nama Lengkap <span className="text-destructive">*</span>
-            </label>
-            <input
-              className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          <Field>
+            <FieldLabel htmlFor="uf-fullname">
+              Nama Lengkap <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <Input
+              className="h-10"
               id="uf-fullname"
-              onChange={(e) => { setFullName(e.target.value) }}
+              onChange={(e) => {
+                setFullName(e.target.value)
+              }}
               placeholder="Ns. Nama Lengkap, S.Kep"
               required
               type="text"
               value={fullName}
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-foreground" htmlFor="uf-role">
-              Peran / Role <span className="text-destructive">*</span>
-            </label>
-            <select
-              className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-              id="uf-role"
-              onChange={(e) => { setRole(e.target.value as UserRole) }}
-              required
-              value={role}
-            >
-              {ROLES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Field>
+            <FieldLabel htmlFor="uf-role">
+              Peran <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <div className="relative">
+              <select
+                className={selectClass}
+                id="uf-role"
+                onChange={(e) => {
+                  setRole(e.target.value as UserRole)
+                }}
+                required
+                value={role}
+              >
+                {ROLES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <IconChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
+          </Field>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-foreground" htmlFor="uf-profession">
-              Profesi / Jabatan <span className="text-destructive">*</span>
-            </label>
-            <input
-              className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          <Field>
+            <FieldLabel htmlFor="uf-profession">
+              Profesi / Jabatan <span aria-hidden="true" className="text-destructive">*</span>
+            </FieldLabel>
+            <Input
+              className="h-10"
               id="uf-profession"
-              onChange={(e) => { setProfession(e.target.value) }}
+              onChange={(e) => {
+                setProfession(e.target.value)
+              }}
               placeholder="Contoh: Perawat Bedah"
               required
               type="text"
               value={profession}
             />
-          </div>
+          </Field>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-foreground" htmlFor="uf-unit">
-              Unit / Instalasi
-            </label>
-            <input
-              className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          <Field>
+            <FieldLabel htmlFor="uf-unit">Unit / Instalasi</FieldLabel>
+            <Input
+              className="h-10"
               id="uf-unit"
-              onChange={(e) => { setUnitId(e.target.value) }}
+              onChange={(e) => {
+                setUnitId(e.target.value)
+              }}
               placeholder="IBS"
               type="text"
               value={unitId}
             />
-          </div>
+          </Field>
 
           {!isEdit && (
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-foreground" htmlFor="uf-password">
-                Kata Sandi Awal <span className="text-destructive">*</span>
-              </label>
-              <input
+            <Field>
+              <FieldLabel htmlFor="uf-password">
+                Kata Sandi Awal <span aria-hidden="true" className="text-destructive">*</span>
+              </FieldLabel>
+              <Input
                 autoComplete="new-password"
-                className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-10"
                 id="uf-password"
                 minLength={8}
-                onChange={(e) => { setPassword(e.target.value) }}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                }}
                 placeholder="Minimal 8 karakter"
                 required
                 type="password"
                 value={password}
               />
-              <p className="text-[11px] text-muted-foreground">
-                Informasikan kata sandi kepada pengguna secara langsung. Tidak dapat dilihat kembali setelah disimpan.
-              </p>
-            </div>
+              <FieldDescription>
+                Sampaikan kata sandi secara langsung kepada pengguna. Sandi tidak dapat dilihat
+                kembali setelah disimpan.
+              </FieldDescription>
+            </Field>
           )}
 
-          <div className="mt-2 flex justify-end gap-2">
-            <Button onClick={onClose} size="sm" type="button" variant="outline">
+          <DialogFooter className="-mx-4 -mb-4 mt-auto border-t bg-muted/40 px-4 sm:px-5">
+            <Button disabled={isSubmitting} onClick={onClose} type="button" variant="ghost">
               Batal
             </Button>
-            <Button disabled={isSubmitting} size="sm" type="submit">
-              {isSubmitting ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Buat Pengguna"}
+            <Button className="font-medium" disabled={isSubmitting} type="submit">
+              {isSubmitting && <Spinner data-icon="inline-start" />}
+              {isSubmitting ? "Menyimpan…" : isEdit ? "Simpan Perubahan" : "Buat Pengguna"}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
-  )
-}
-
-// ─── Confirm dialog ───────────────────────────────────────────────
-function ConfirmDialog({
-  title,
-  body,
-  confirmLabel,
-  confirmVariant = "default",
-  onConfirm,
-  onClose,
-}: {
-  title: string
-  body: string
-  confirmLabel: string
-  confirmVariant?: "default" | "destructive"
-  onConfirm: () => void
-  onClose: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div aria-hidden="true" className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div
-        className="relative z-10 w-full max-w-sm rounded-xl border bg-card p-6 shadow-xl"
-        role="dialog"
-        aria-modal="true"
-      >
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
-        <div className="mt-4 flex justify-end gap-2">
-          <Button onClick={onClose} size="sm" variant="outline">
-            Batal
-          </Button>
-          <Button
-            onClick={onConfirm}
-            size="sm"
-            variant={confirmVariant === "destructive" ? "outline" : "default"}
-            className={confirmVariant === "destructive" ? "border-destructive text-destructive hover:bg-destructive/10" : ""}
-          >
-            {confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -326,6 +327,7 @@ export function UserManagementPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [isToggling, setIsToggling] = useState(false)
 
   // Filters
   const [search, setSearch] = useState("")
@@ -368,7 +370,9 @@ export function UserManagementPage() {
       }
     }
     void init()
-    return () => { isMounted = false }
+    return () => {
+      isMounted = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -385,274 +389,316 @@ export function UserManagementPage() {
     setShowCreateDialog(false)
     setEditUser(null)
     setFeedback(`Pengguna "${user.fullName}" berhasil disimpan.`)
-    setTimeout(() => { setFeedback(null) }, 4000)
+    setTimeout(() => {
+      setFeedback(null)
+    }, 4000)
   }
 
   const handleToggleActivation = async () => {
     if (!confirmAction) return
     const { user, action } = confirmAction
-    setConfirmAction(null)
+    setIsToggling(true)
     try {
       const updated = await toggleUserActivation(user.id, action, csrfToken ?? undefined)
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
       const label = action === "deactivate" ? "dinonaktifkan" : "diaktifkan"
       setFeedback(`Pengguna "${updated.fullName}" berhasil ${label}.`)
-      setTimeout(() => { setFeedback(null) }, 4000)
+      setConfirmAction(null)
+      setTimeout(() => {
+        setFeedback(null)
+      }, 4000)
     } catch (err) {
+      setConfirmAction(null)
       setErrorMessage(err instanceof Error ? err.message : "Gagal mengubah status pengguna.")
+    } finally {
+      setIsToggling(false)
     }
   }
 
+  const confirmUser = confirmAction?.user
+  const isDeactivate = confirmAction?.action === "deactivate"
+  const confirmUserName = confirmUser?.fullName ?? ""
+  const confirmUserHandle = confirmUser ? ` (@${confirmUser.username})` : ""
+
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-      {/* Header */}
-      <header className="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <IconUsers className="size-4 text-primary" aria-hidden="true" />
-            <span className="text-xs font-semibold tracking-wider text-primary uppercase">
-              Administrator
-            </span>
-          </div>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-foreground">
-            Manajemen Pengguna
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Kelola akun staf IBS — tambah, edit, aktifkan, atau nonaktifkan pengguna.
-          </p>
-        </div>
-        <Button
-          className="gap-1.5 font-medium shrink-0"
-          onClick={() => { setShowCreateDialog(true) }}
-          size="sm"
-        >
-          <IconPlus className="size-4" />
-          Tambah Pengguna
-        </Button>
-      </header>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <PageHeader
+        actions={
+          <Button
+            className="font-medium"
+            onClick={() => {
+              setShowCreateDialog(true)
+            }}
+            size="sm"
+          >
+            <IconPlus data-icon="inline-start" />
+            Tambah Pengguna
+          </Button>
+        }
+        breadcrumbs={[{ label: "Beranda", to: "/" }, { label: "Manajemen Pengguna" }]}
+        description="Kelola akun staf IBS — tambah, ubah, aktifkan, atau nonaktifkan pengguna sistem."
+        title="Manajemen Pengguna"
+      />
 
       {/* Feedback */}
       {feedback && (
-        <div
+        <p
           aria-live="polite"
-          className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+          className="flex items-center gap-2 rounded-lg bg-status-success px-4 py-3 text-xs font-medium text-status-success-foreground"
         >
-          <IconCheck className="size-4 shrink-0" aria-hidden="true" />
+          <IconCircleCheck aria-hidden="true" className="size-4 shrink-0" />
           {feedback}
-        </div>
+        </p>
       )}
 
       {/* Error */}
       {errorMessage && (
-        <div
-          aria-live="polite"
-          className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-xs font-medium text-destructive"
-          role="alert"
-        >
-          <IconAlertCircle className="size-4 shrink-0" aria-hidden="true" />
-          {errorMessage}
-        </div>
+        <ErrorState
+          message={errorMessage}
+          onRetry={() => {
+            void loadUsers()
+          }}
+        />
       )}
 
       {/* Filters */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-        <div className="relative flex-1">
-          <IconSearch
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <input
-            className="w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            onChange={(e) => { setSearch(e.target.value) }}
-            placeholder="Cari nama atau username..."
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <InputGroup className="h-10 lg:max-w-xs md:h-8">
+          <InputGroupAddon align="inline-start">
+            <IconSearch />
+          </InputGroupAddon>
+          <InputGroupInput
+            aria-label="Cari pengguna"
+            onChange={(e) => {
+              setSearch(e.target.value)
+            }}
+            placeholder="Cari nama atau nama pengguna…"
             type="search"
             value={search}
           />
+        </InputGroup>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative sm:w-48">
+            <select
+              aria-label="Filter peran"
+              className={selectClass}
+              onChange={(e) => {
+                setRoleFilter(e.target.value)
+              }}
+              value={roleFilter}
+            >
+              <option value="">Semua Peran</option>
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+            <IconChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
+          <div className="relative sm:w-40">
+            <select
+              aria-label="Filter status"
+              className={selectClass}
+              onChange={(e) => {
+                setActiveFilter(e.target.value as "" | "true" | "false")
+              }}
+              value={activeFilter}
+            >
+              <option value="">Semua Status</option>
+              <option value="true">Aktif</option>
+              <option value="false">Nonaktif</option>
+            </select>
+            <IconChevronDown
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
+          <Button
+            className="shrink-0"
+            disabled={isLoading}
+            onClick={() => {
+              void loadUsers()
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <IconRefresh data-icon="inline-start" />
+            Terapkan
+          </Button>
         </div>
-        <select
-          className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-          onChange={(e) => { setRoleFilter(e.target.value) }}
-          value={roleFilter}
-          aria-label="Filter peran"
-        >
-          <option value="">Semua Peran</option>
-          {ROLES.map((r) => (
-            <option key={r.value} value={r.value}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-        <select
-          className="rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
-          onChange={(e) => { setActiveFilter(e.target.value as "" | "true" | "false") }}
-          value={activeFilter}
-          aria-label="Filter status"
-        >
-          <option value="">Semua Status</option>
-          <option value="true">Aktif</option>
-          <option value="false">Nonaktif</option>
-        </select>
-        <Button
-          className="gap-1.5 shrink-0"
-          onClick={() => { void loadUsers() }}
-          size="sm"
-          variant="outline"
-        >
-          <IconRefresh className="size-3.5" />
-          Cari
-        </Button>
       </div>
 
       {/* Table */}
       {isLoading ? (
-        <div className="flex min-h-48 items-center justify-center rounded-xl border bg-card">
-          <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
-            <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span>Memuat daftar pengguna...</span>
-          </div>
-        </div>
+        <TableSkeleton rows={6} />
       ) : users.length === 0 ? (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/20 py-10 text-center">
-          <IconUsers className="size-8 text-muted-foreground/40" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-semibold text-foreground">Tidak Ada Pengguna Ditemukan</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Ubah filter atau tambahkan pengguna baru.
-            </p>
-          </div>
-        </div>
+        <EmptyState
+          action={
+            <Button
+              onClick={() => {
+                setShowCreateDialog(true)
+              }}
+              size="sm"
+            >
+              <IconPlus data-icon="inline-start" />
+              Tambah Pengguna
+            </Button>
+          }
+          className="py-14"
+          description="Ubah filter pencarian atau tambahkan pengguna baru."
+          icon={IconUsers}
+          title="Tidak ada pengguna ditemukan"
+        />
       ) : (
-        <>
-          {/* Desktop table */}
-          <div className="hidden overflow-x-auto rounded-xl border bg-card shadow-xs sm:block">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b bg-muted/30 text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Nama Lengkap</th>
-                  <th className="px-4 py-3 font-medium">Username</th>
-                  <th className="px-4 py-3 font-medium">Peran</th>
-                  <th className="px-4 py-3 font-medium">Profesi</th>
-                  <th className="px-4 py-3 font-medium">Unit</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Dibuat</th>
-                  <th className="px-4 py-3 text-right font-medium">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {users.map((u) => (
-                  <tr key={u.id} className="transition-colors hover:bg-muted/20">
-                    <td className="px-4 py-3 font-medium text-foreground">{u.fullName}</td>
-                    <td className="px-4 py-3 font-mono text-muted-foreground">{u.username}</td>
-                    <td className="px-4 py-3">
-                      <RoleBadge role={u.role} />
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{u.profession}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{u.unitId}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge isActive={u.isActive} />
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {new Date(u.createdAt).toLocaleDateString("id-ID")}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          className="gap-1 text-xs"
-                          onClick={() => { setEditUser(u) }}
-                          size="sm"
-                          variant="outline"
-                        >
-                          <IconEdit className="size-3.5" />
-                          Edit
-                        </Button>
-                        {u.isActive ? (
+        <Card className="py-0">
+          <CardContent className="p-0">
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Pengguna</TableHead>
+                    <TableHead className="w-40">Peran</TableHead>
+                    <TableHead className="w-44">Profesi</TableHead>
+                    <TableHead className="w-20">Unit</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-28">Terdaftar</TableHead>
+                    <TableHead className="w-52 text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <span className="block font-medium text-foreground">{u.fullName}</span>
+                        <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
+                          @{u.username}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <RoleBadge role={u.role} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{u.profession}</TableCell>
+                      <TableCell className="text-muted-foreground">{u.unitId}</TableCell>
+                      <TableCell>
+                        <StatusBadge isActive={u.isActive} />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                        {new Date(u.createdAt).toLocaleDateString("id-ID")}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
-                            className="gap-1 text-xs border-rose-200 text-rose-600 hover:bg-rose-50"
-                            onClick={() => { setConfirmAction({ user: u, action: "deactivate" }) }}
-                            size="sm"
+                            onClick={() => {
+                              setEditUser(u)
+                            }}
+                            size="xs"
                             variant="outline"
                           >
-                            <IconUserOff className="size-3.5" />
-                            Nonaktifkan
+                            <IconEdit data-icon="inline-start" />
+                            Edit
                           </Button>
-                        ) : (
-                          <Button
-                            className="gap-1 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                            onClick={() => { setConfirmAction({ user: u, action: "activate" }) }}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <IconCheck className="size-3.5" />
-                            Aktifkan
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          {u.isActive ? (
+                            <Button
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => {
+                                setConfirmAction({ user: u, action: "deactivate" })
+                              }}
+                              size="xs"
+                              variant="outline"
+                            >
+                              <IconUserOff data-icon="inline-start" />
+                              Nonaktifkan
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => {
+                                setConfirmAction({ user: u, action: "activate" })
+                              }}
+                              size="xs"
+                              variant="outline"
+                            >
+                              <IconCheck data-icon="inline-start" />
+                              Aktifkan
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
 
-          {/* Mobile card list */}
-          <div className="flex flex-col gap-2 sm:hidden">
-            {users.map((u) => (
-              <div key={u.id} className="rounded-xl border bg-card p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{u.fullName}</p>
-                    <p className="font-mono text-[11px] text-muted-foreground">{u.username}</p>
+            {/* Mobile card list */}
+            <ul className="flex flex-col md:hidden">
+              {users.map((u, index) => (
+                <li className={cn("px-4 py-3.5", index > 0 && "border-t")} key={u.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{u.fullName}</p>
+                      <p className="font-mono text-[11px] text-muted-foreground">@{u.username}</p>
+                    </div>
+                    <StatusBadge isActive={u.isActive} />
                   </div>
-                  <StatusBadge isActive={u.isActive} />
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <RoleBadge role={u.role} />
-                  <span className="rounded-md border bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground">
-                    {u.unitId}
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">{u.profession}</p>
-                <div className="mt-3 flex items-center gap-2">
-                  <Button
-                    className="flex-1 gap-1 text-xs"
-                    onClick={() => { setEditUser(u) }}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <IconEdit className="size-3.5" />
-                    Edit
-                  </Button>
-                  {u.isActive ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <RoleBadge role={u.role} />
+                    <span className="text-[11px] text-muted-foreground">
+                      {u.profession} · {u.unitId}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
                     <Button
-                      className="flex-1 gap-1 text-xs border-rose-200 text-rose-600"
-                      onClick={() => { setConfirmAction({ user: u, action: "deactivate" }) }}
+                      className="flex-1"
+                      onClick={() => {
+                        setEditUser(u)
+                      }}
                       size="sm"
                       variant="outline"
                     >
-                      <IconUserOff className="size-3.5" />
-                      Nonaktifkan
+                      <IconEdit data-icon="inline-start" />
+                      Edit
                     </Button>
-                  ) : (
-                    <Button
-                      className="flex-1 gap-1 text-xs border-emerald-200 text-emerald-700"
-                      onClick={() => { setConfirmAction({ user: u, action: "activate" }) }}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <IconCheck className="size-3.5" />
-                      Aktifkan
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
+                    {u.isActive ? (
+                      <Button
+                        className="flex-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => {
+                          setConfirmAction({ user: u, action: "deactivate" })
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <IconUserOff data-icon="inline-start" />
+                        Nonaktifkan
+                      </Button>
+                    ) : (
+                      <Button
+                        className="flex-1"
+                        onClick={() => {
+                          setConfirmAction({ user: u, action: "activate" })
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        <IconCheck data-icon="inline-start" />
+                        Aktifkan
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       {/* Total count */}
       {!isLoading && users.length > 0 && (
-        <p className="text-right text-[11px] text-muted-foreground">
+        <p className="text-right text-[11px] text-muted-foreground tabular-nums">
           Menampilkan {users.length} pengguna
         </p>
       )}
@@ -661,38 +707,45 @@ export function UserManagementPage() {
       {showCreateDialog && (
         <UserFormDialog
           csrfToken={csrfToken}
-          onClose={() => { setShowCreateDialog(false) }}
+          onClose={() => {
+            setShowCreateDialog(false)
+          }}
           onSuccess={handleUserSaved}
         />
       )}
 
       {editUser && (
         <UserFormDialog
-          user={editUser}
           csrfToken={csrfToken}
-          onClose={() => { setEditUser(null) }}
+          onClose={() => {
+            setEditUser(null)
+          }}
           onSuccess={handleUserSaved}
+          user={editUser}
         />
       )}
 
-      {confirmAction && (
-        <ConfirmDialog
-          title={
-            confirmAction.action === "deactivate"
-              ? `Nonaktifkan ${confirmAction.user.fullName}?`
-              : `Aktifkan ${confirmAction.user.fullName}?`
-          }
-          body={
-            confirmAction.action === "deactivate"
-              ? `Pengguna "${confirmAction.user.fullName}" (${confirmAction.user.username}) akan dinonaktifkan. Seluruh sesi aktif akan dicabut secara otomatis.`
-              : `Pengguna "${confirmAction.user.fullName}" (${confirmAction.user.username}) akan diaktifkan kembali dan dapat masuk ke sistem.`
-          }
-          confirmLabel={confirmAction.action === "deactivate" ? "Nonaktifkan" : "Aktifkan"}
-          confirmVariant={confirmAction.action === "deactivate" ? "destructive" : "default"}
-          onClose={() => { setConfirmAction(null) }}
-          onConfirm={() => { void handleToggleActivation() }}
-        />
-      )}
+      <ConfirmDialog
+        busy={isToggling}
+        cancelLabel="Batal"
+        confirmLabel={isDeactivate ? "Nonaktifkan" : "Aktifkan"}
+        description={
+          isDeactivate
+            ? `Pengguna "${confirmUserName}"${confirmUserHandle} akan dinonaktifkan. Seluruh sesi aktifnya akan dicabut otomatis.`
+            : `Pengguna "${confirmUserName}"${confirmUserHandle} akan diaktifkan kembali dan dapat masuk ke sistem.`
+        }
+        onConfirm={() => {
+          void handleToggleActivation()
+        }}
+        onOpenChange={(open) => {
+          if (!open) setConfirmAction(null)
+        }}
+        open={Boolean(confirmAction)}
+        title={
+          isDeactivate ? `Nonaktifkan ${confirmUserName}?` : `Aktifkan ${confirmUserName}?`
+        }
+        tone={isDeactivate ? "destructive" : "default"}
+      />
     </div>
   )
 }

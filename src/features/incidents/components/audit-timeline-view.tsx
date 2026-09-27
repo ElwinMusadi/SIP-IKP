@@ -1,93 +1,95 @@
 import { IconHistory, IconNotes } from "@tabler/icons-react"
+
+import { EmptyState } from "@/components/shared/empty-state"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { AuditRecord } from "../types/incident"
 
 interface AuditTimelineViewProps {
   records: AuditRecord[]
 }
 
+const EVENT_STYLES: Record<string, { label: string; className: string }> = {
+  DRAFT_CREATED: { label: "Draf dibuat", className: "bg-status-neutral text-status-neutral-foreground" },
+  REPORT_SUBMITTED: { label: "Laporan resmi dikirim", className: "bg-status-info text-status-info-foreground" },
+  REVISION_REQUIRED: { label: "Permintaan perbaikan", className: "bg-status-warning text-status-warning-foreground" },
+  SIMPLE_INVESTIGATION_COMPLETED: {
+    label: "Investigasi sederhana selesai",
+    className: "bg-primary/10 text-primary",
+  },
+  REPORT_COMPLETED: { label: "Laporan diselesaikan", className: "bg-status-success text-status-success-foreground" },
+  EMERGENCY_CORRECTION: { label: "Koreksi darurat", className: "bg-risk-red text-risk-red-foreground" },
+}
+
 export function AuditTimelineView({ records }: AuditTimelineViewProps) {
   if (records.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-xs text-muted-foreground">
-        Belum ada jejak audit yang terekam.
-      </div>
+      <Card>
+        <CardContent className="py-4">
+          <EmptyState
+            className="border-0 bg-transparent py-4"
+            description="Aktivitas pada laporan ini akan tercatat otomatis di sini."
+            icon={IconHistory}
+            title="Belum ada jejak audit"
+          />
+        </CardContent>
+      </Card>
     )
   }
 
-  const getEventBadgeColor = (eventType: string) => {
-    switch (eventType) {
-      case "DRAFT_CREATED":
-        return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-      case "REPORT_SUBMITTED":
-        return "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300"
-      case "REVISION_REQUIRED":
-        return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-      case "SIMPLE_INVESTIGATION_COMPLETED":
-        return "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300"
-      case "REPORT_COMPLETED":
-        return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-      case "EMERGENCY_CORRECTION":
-        return "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
-      default:
-        return "bg-muted text-muted-foreground"
-    }
-  }
-
-  const formatEventLabel = (eventType: string) => {
-    switch (eventType) {
-      case "DRAFT_CREATED":
-        return "Draf Dibuat"
-      case "REPORT_SUBMITTED":
-        return "Laporan Resmi Dikirimkan"
-      case "REVISION_REQUIRED":
-        return "Permintaan Perbaikan / Revisi"
-      case "SIMPLE_INVESTIGATION_COMPLETED":
-        return "Investigasi Sederhana Diselesaikan"
-      case "REPORT_COMPLETED":
-        return "Laporan Diselesaikan (Selesai)"
-      case "EMERGENCY_CORRECTION":
-        return "Koreksi Darurat Dilakukan"
-      default:
-        return eventType
-    }
-  }
-
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-xs">
-      <div className="flex items-center gap-2 border-b pb-3">
-        <IconHistory className="size-5 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">Jejak Audit Laporan (Audit Trail)</h3>
-      </div>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <IconHistory aria-hidden="true" className="size-4 text-primary" />
+          Jejak Audit Laporan
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ol className="relative flex flex-col gap-5 border-l border-border pl-5 text-xs">
+          {records.map((rec) => {
+            const eventStyle = EVENT_STYLES[rec.eventType] ?? {
+              label: rec.eventType,
+              className: "bg-muted text-muted-foreground",
+            }
+            return (
+              <li className="relative flex flex-col gap-1.5" key={rec.id}>
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1 -left-[26.5px] size-2.5 rounded-full border-2 border-background bg-primary ring-1 ring-primary/30"
+                />
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${eventStyle.className}`}
+                  >
+                    {eventStyle.label}
+                  </span>
+                  <time className="text-muted-foreground tabular-nums" dateTime={rec.occurredAt}>
+                    {new Date(rec.occurredAt).toLocaleString("id-ID", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                </div>
 
-      <ol className="relative flex flex-col gap-4 border-l border-muted-foreground/20 pl-4 text-xs">
-        {records.map((rec) => (
-          <li className="relative flex flex-col gap-1" key={rec.id}>
-            <span className="absolute -left-[21px] top-1 size-2.5 rounded-full bg-primary ring-4 ring-background" />
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-md px-2 py-0.5 font-semibold text-[11px] ${getEventBadgeColor(rec.eventType)}`}
-              >
-                {formatEventLabel(rec.eventType)}
-              </span>
-              <span className="text-muted-foreground">
-                {new Date(rec.occurredAt).toLocaleString("id-ID")}
-              </span>
-            </div>
+                <div className="flex flex-wrap items-center gap-x-1.5 text-foreground">
+                  <span className="font-semibold">{rec.actorName}</span>
+                  <span className="text-muted-foreground">· {rec.actorRole}</span>
+                </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-foreground">
-              <span className="font-semibold">{rec.actorName}</span>
-              <span className="text-muted-foreground">({rec.actorRole})</span>
-            </div>
-
-            {rec.notes && (
-              <div className="mt-1 flex items-start gap-1.5 rounded-md border bg-muted/30 p-2 text-muted-foreground">
-                <IconNotes className="size-3.5 shrink-0 text-primary mt-0.5" />
-                <span className="whitespace-pre-wrap">{rec.notes}</span>
-              </div>
-            )}
-          </li>
-        ))}
-      </ol>
-    </div>
+                {rec.notes && (
+                  <div className="mt-0.5 flex items-start gap-1.5 rounded-md border bg-muted/30 p-2.5 text-muted-foreground">
+                    <IconNotes aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                    <span className="leading-5 whitespace-pre-wrap">{rec.notes}</span>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,12 +1,20 @@
 import { IconLock } from "@tabler/icons-react"
 import { Link, Navigate, Outlet, useLocation } from "react-router"
 
+import { InlineLoader } from "@/components/shared/loading-states"
 import { Button } from "@/components/ui/button"
 import type { UserRole } from "@/lib/auth-context"
 import { useAuth } from "@/lib/use-auth"
 
 interface ProtectedRouteProps {
   allowedRoles?: UserRole[]
+}
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  TENAGA_KESEHATAN: "Tenaga Kesehatan",
+  KEPALA_RUANGAN: "Kepala Ruangan",
+  KOMITE_PMKP: "Komite PMKP",
+  ADMINISTRATOR: "Administrator",
 }
 
 export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
@@ -16,10 +24,7 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   if (isLoading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center p-8">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm font-medium">Memverifikasi sesi aman...</p>
-        </div>
+        <InlineLoader label="Memverifikasi sesi aman…" />
       </div>
     )
   }
@@ -31,15 +36,15 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return (
       <div className="mx-auto flex min-h-[50vh] max-w-xl flex-col items-center justify-center gap-4 p-8 text-center">
-        <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <span className="flex size-12 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
           <IconLock className="size-6" />
-        </div>
-        <h2 className="text-xl font-semibold">Akses Terbatas</h2>
-        <p className="text-sm text-muted-foreground">
-          Peran Anda ({user.role}) tidak memiliki wewenang untuk membuka halaman ini. Silakan
-          hubungi Kepala Ruangan atau Administrator jika Anda memerlukan akses.
+        </span>
+        <h2 className="text-xl font-semibold tracking-tight">Akses terbatas</h2>
+        <p className="text-sm leading-6 text-muted-foreground">
+          Peran Anda ({ROLE_LABELS[user.role]}) tidak memiliki wewenang untuk membuka halaman ini.
+          Hubungi Administrator jika Anda memerlukan akses.
         </p>
-        <Button render={<Link to="/" />} variant="outline">
+        <Button render={<Link to="/" />} size="sm" variant="outline">
           Kembali ke Beranda
         </Button>
       </div>

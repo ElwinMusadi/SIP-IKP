@@ -47,6 +47,16 @@
   --color-risk-yellow-foreground: var(--risk-yellow-foreground);
   --color-risk-red: var(--risk-red);
   --color-risk-red-foreground: var(--risk-red-foreground);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-foreground: var(--status-neutral-foreground);
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-foreground: var(--status-pending-foreground);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -97,6 +107,16 @@
   --risk-yellow-foreground: oklch(0.34 0.07 70);
   --risk-red: oklch(0.94 0.04 25);
   --risk-red-foreground: oklch(0.38 0.16 27);
+  --status-neutral: oklch(0.955 0.004 228);
+  --status-neutral-foreground: oklch(0.42 0.014 228);
+  --status-info: oklch(0.93 0.04 235);
+  --status-info-foreground: oklch(0.4 0.1 240);
+  --status-pending: oklch(0.935 0.04 275);
+  --status-pending-foreground: oklch(0.42 0.12 278);
+  --status-warning: oklch(0.95 0.07 85);
+  --status-warning-foreground: oklch(0.42 0.1 70);
+  --status-success: oklch(0.945 0.055 152);
+  --status-success-foreground: oklch(0.38 0.09 155);
 }
 
 .dark {
@@ -139,6 +159,16 @@
   --risk-yellow-foreground: oklch(0.95 0.075 88);
   --risk-red: oklch(0.39 0.13 27);
   --risk-red-foreground: oklch(0.94 0.04 25);
+  --status-neutral: oklch(0.3 0.008 228);
+  --status-neutral-foreground: oklch(0.8 0.01 228);
+  --status-info: oklch(0.34 0.06 240);
+  --status-info-foreground: oklch(0.87 0.05 238);
+  --status-pending: oklch(0.35 0.07 278);
+  --status-pending-foreground: oklch(0.87 0.06 280);
+  --status-warning: oklch(0.37 0.065 75);
+  --status-warning-foreground: oklch(0.9 0.07 85);
+  --status-success: oklch(0.34 0.065 152);
+  --status-success-foreground: oklch(0.89 0.06 152);
 }
 
 @layer base {
