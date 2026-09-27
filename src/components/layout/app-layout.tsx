@@ -16,7 +16,12 @@ export function AppLayout() {
 
   const navigation = [
     { label: "Beranda", to: "/" },
-    ...(user ? [{ label: "Laporan Insiden", to: "/laporan" }] : []),
+    ...(user
+      ? [
+          { label: "Laporan Insiden", to: "/laporan" },
+          { label: "Rekapitulasi", to: "/laporan/rekap" },
+        ]
+      : []),
     { label: "Status Fondasi", to: "/fondasi" },
   ]
 

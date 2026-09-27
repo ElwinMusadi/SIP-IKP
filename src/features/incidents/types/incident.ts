@@ -119,3 +119,68 @@ export interface IncidentReport {
   investigation?: SimpleInvestigation | null
   submissionSnapshot?: Record<string, unknown> | null
 }
+
+export interface IncidentPrintPayload {
+  report: IncidentReport
+  investigation: SimpleInvestigation | null
+  submissionSnapshot: Record<string, unknown> | null
+  auditRecords: AuditRecord[]
+  printedAt: string
+}
+
+export interface RecapItem {
+  id: string
+  report_number: string | null
+  status: IncidentStatus
+  incident_datetime: string
+  incident_timezone: string
+  incident_title: string | null
+  incident_type: IncidentType
+  incident_target: IncidentTarget
+  incident_location: string | null
+  clinical_specialization: string | null
+  causing_unit: string | null
+  patient_impact: string | null
+  risk_grade: RiskGrade | null
+  is_overdue_sla: number
+  created_at: string
+  submitted_at: string | null
+  completed_at: string | null
+}
+
+export interface RecapSummary {
+  totalReports: number
+  byIncidentType: {
+    KNC: number
+    KTC: number
+    KTD: number
+    SENTINEL: number
+  }
+  byRiskGrade: {
+    BIRU: number
+    HIJAU: number
+    KUNING: number
+    MERAH: number
+    UNASSIGNED: number
+  }
+  byStatus: Record<string, number>
+  bySla: {
+    onTime: number
+    overdue: number
+  }
+}
+
+export interface OperationalRecapFilters {
+  startDate?: string | null
+  endDate?: string | null
+  incidentType?: string | null
+  riskGrade?: string | null
+  status?: string | null
+  incidentTarget?: string | null
+}
+
+export interface OperationalRecapPayload {
+  summary: RecapSummary
+  items: RecapItem[]
+  filters: OperationalRecapFilters
+}

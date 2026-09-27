@@ -4,6 +4,7 @@ import {
   IconArrowLeft,
   IconCalendar,
   IconCheck,
+  IconPrinter,
   IconRefresh,
   IconUser,
 } from "@tabler/icons-react"
@@ -167,6 +168,17 @@ export function IncidentDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            className="gap-1.5"
+            onClick={() => {
+              void navigate(`/laporan/${report.id}/cetak`)
+            }}
+            size="sm"
+            variant="default"
+          >
+            <IconPrinter className="size-3.5" />
+            <span>Cetak Laporan</span>
+          </Button>
           <Button
             className="gap-1.5"
             onClick={() => {

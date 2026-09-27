@@ -1,8 +1,11 @@
 import type { InvestigationFormData } from "../schemas/incident-form-schema"
 import type {
   AuditRecord,
+  IncidentPrintPayload,
   IncidentReport,
   MasterDataPayload,
+  OperationalRecapFilters,
+  OperationalRecapPayload,
   SimpleInvestigation,
 } from "../types/incident"
 
@@ -230,4 +233,26 @@ export async function finalizePmkpReview(id: string, csrfToken?: string): Promis
 export async function fetchIncidentAudit(id: string): Promise<AuditRecord[]> {
   const res = await fetch(`/api/incidents/${id}/audit`)
   return handleResponse<AuditRecord[]>(res)
+}
+
+export async function fetchIncidentPrint(id: string): Promise<IncidentPrintPayload> {
+  const res = await fetch(`/api/incidents/${id}/print`)
+  return handleResponse<IncidentPrintPayload>(res)
+}
+
+export async function fetchOperationalRecap(
+  filters: OperationalRecapFilters = {},
+): Promise<OperationalRecapPayload> {
+  const query = new URLSearchParams()
+  if (filters.startDate) query.set("startDate", filters.startDate)
+  if (filters.endDate) query.set("endDate", filters.endDate)
+  if (filters.incidentType) query.set("incidentType", filters.incidentType)
+  if (filters.riskGrade) query.set("riskGrade", filters.riskGrade)
+  if (filters.status) query.set("status", filters.status)
+  if (filters.incidentTarget) query.set("incidentTarget", filters.incidentTarget)
+
+  const queryString = query.toString()
+  const url = queryString ? `/api/reports/recap?${queryString}` : "/api/reports/recap"
+  const res = await fetch(url)
+  return handleResponse<OperationalRecapPayload>(res)
 }
