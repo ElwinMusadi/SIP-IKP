@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button"
 import { fetchOperationalRecap } from "../api/incidents-api"
 import { IncidentStatusBadge } from "../components/incident-status-badge"
 import { RiskBadge } from "../components/risk-badge"
-import { SlaBadge } from "../components/sla-badge"
 import type { OperationalRecapFilters, OperationalRecapPayload } from "../types/incident"
 
 export function IncidentsRecapPage() {
@@ -391,25 +390,7 @@ export function IncidentsRecapPage() {
               </p>
             </div>
 
-            {/* SLA Compliance */}
-            <div className="flex flex-col justify-between rounded-xl border bg-card p-4 shadow-xs print:border-black print:p-2">
-              <span className="font-semibold text-muted-foreground print:text-black">
-                Kepatuhan SLA 48 Jam
-              </span>
-              <div className="mt-2 flex items-center justify-between text-xs">
-                <span className="text-emerald-700 print:text-black font-semibold">
-                  Tepat Waktu: {summary.bySla.onTime}
-                </span>
-                <span className="text-rose-700 print:text-black font-semibold">
-                  Terlambat: {summary.bySla.overdue}
-                </span>
-              </div>
-              <p className="mt-1 text-[10px] text-muted-foreground print:text-black">
-                {summary.totalReports > 0
-                  ? `${String(Math.round((summary.bySla.onTime / summary.totalReports) * 100))}% Kepatuhan Waktu`
-                  : "0% Kepatuhan"}
-              </p>
-            </div>
+              {/* SLA summary card removed — SLA disabled for MVP */}
           </div>
         </section>
       )}
@@ -440,7 +421,6 @@ export function IncidentsRecapPage() {
                 <th className="px-3 py-2.5">Lokasi Kamar</th>
                 <th className="px-3 py-2.5">Pita Risiko</th>
                 <th className="px-3 py-2.5">Status Alur</th>
-                <th className="px-3 py-2.5">SLA 48h</th>
                 <th className="px-3 py-2.5 text-right no-print">Aksi</th>
               </tr>
             </thead>
@@ -473,9 +453,6 @@ export function IncidentsRecapPage() {
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     <IncidentStatusBadge status={item.status} />
-                  </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap">
-                    <SlaBadge isOverdue={item.is_overdue_sla} />
                   </td>
                   <td className="px-3 py-2.5 text-right whitespace-nowrap no-print">
                     <div className="flex items-center justify-end gap-1.5">

@@ -31,7 +31,6 @@ import { IncidentStatusBadge } from "../components/incident-status-badge"
 import { InvestigationWorksheet } from "../components/investigation-worksheet"
 import { PmkpReviewPanel } from "../components/pmkp-review-panel"
 import { RiskBadge } from "../components/risk-badge"
-import { SlaBadge } from "../components/sla-badge"
 import type { AuditRecord, IncidentReport } from "../types/incident"
 
 interface LocationState {
@@ -159,7 +158,6 @@ export function IncidentDetailPage() {
               </span>
               <IncidentStatusBadge status={report.status} />
               <RiskBadge grade={report.risk_grade} />
-              <SlaBadge deadlineUtc={report.sla_deadline_utc} isOverdue={report.is_overdue_sla} />
             </div>
             <h1 className="mt-1 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               {report.incident_title || "(Draf Tanpa Judul)"}

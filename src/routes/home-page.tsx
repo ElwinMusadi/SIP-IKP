@@ -482,21 +482,6 @@ function PmkpDashboard({
               value={summary.byRiskGrade.MERAH}
               accent={summary.byRiskGrade.MERAH > 0 ? "danger" : "default"}
             />
-            <MetricTile
-              label="Kepatuhan SLA"
-              value={
-                summary.totalReports > 0
-                  ? `${String(Math.round((summary.bySla.onTime / summary.totalReports) * 100))}%`
-                  : "—"
-              }
-              sublabel="Pelaporan 48 jam"
-              accent={
-                summary.totalReports > 0 &&
-                summary.bySla.onTime / summary.totalReports < 0.7
-                  ? "warning"
-                  : "default"
-              }
-            />
           </div>
         </section>
       )}

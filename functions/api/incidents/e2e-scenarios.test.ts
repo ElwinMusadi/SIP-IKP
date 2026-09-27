@@ -624,7 +624,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
     expect(patchPostSubmit.status).toBe(403)
   })
 
-  it("PART E: SLA Validation (<48h on time, >48h requires overdue reason)", async () => {
+  it("PART E: SLA MVP Disabled (late submission allowed without overdue_reason)", async () => {
     const { db } = createE2eDatabase()
 
     // Create draft with old incident datetime (>48 hours ago)
@@ -647,7 +647,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
     const created: { data: { id: string } } = await createRes.json()
     const incidentId = created.data.id
 
-    // Complete mandatory fields except overdue reason
+    // Complete mandatory fields WITHOUT overdue reason (SLA disabled)
     await callHandler(
       onIncidentPatch,
       new Request(`https://example.test/api/incidents/${incidentId}`, {
@@ -656,7 +656,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
         body: JSON.stringify({
           ...completeReportBody,
           incident_datetime: oldDate,
-          overdue_reason: "",
+          overdue_reason: "", // not required — SLA_ENABLED=false
         }),
       }),
       db,
@@ -664,40 +664,17 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
       { id: incidentId },
     )
 
-    // Submit rejected because overdue reason is required
-    const submitFail = await callHandler(
+    // Submit should SUCCEED without overdue_reason (SLA_ENABLED=false)
+    const submitOk = await callHandler(
       onSubmitPost,
       new Request(`https://example.test/api/incidents/${incidentId}/submit`, { method: "POST" }),
       db,
       { requestId: "req_e3", auth: nakesA },
       { id: incidentId },
     )
-    expect(submitFail.status).toBe(422)
-    const errBody: { code: string } = await submitFail.json()
-    expect(errBody.code).toBe("OVERDUE_REASON_REQUIRED")
-
-    // Supply overdue reason and resubmit -> succeeds
-    await callHandler(
-      onIncidentPatch,
-      new Request(`https://example.test/api/incidents/${incidentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ overdue_reason: "Kendala shift malam dan verifikasi data" }),
-      }),
-      db,
-      { requestId: "req_e4", auth: nakesA },
-      { id: incidentId },
-    )
-
-    const submitOk = await callHandler(
-      onSubmitPost,
-      new Request(`https://example.test/api/incidents/${incidentId}/submit`, { method: "POST" }),
-      db,
-      { requestId: "req_e5", auth: nakesA },
-      { id: incidentId },
-    )
     expect(submitOk.status).toBe(200)
     const submittedOk: { data: { is_overdue_sla: number } } = await submitOk.json()
+    // SLA overdue flag is still stored even when enforcement is disabled
     expect(submittedOk.data.is_overdue_sla).toBe(1)
   })
 

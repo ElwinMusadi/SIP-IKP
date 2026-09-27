@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from "react-router"
 
 import { AppLayout } from "@/components/layout/app-layout"
 import { ProtectedRoute } from "@/components/layout/protected-route"
+import { UserManagementPage } from "@/features/admin/pages/user-management-page"
 import { IncidentCreatePage } from "@/features/incidents/pages/incident-create-page"
 import { IncidentDetailPage } from "@/features/incidents/pages/incident-detail-page"
 import { IncidentPrintPage } from "@/features/incidents/pages/incident-print-page"
@@ -31,6 +32,10 @@ const router = createBrowserRouter([
           { path: "laporan/:id/cetak", Component: IncidentPrintPage },
           { path: "insiden/:id/cetak", Component: IncidentPrintPage },
         ],
+      },
+      {
+        element: <ProtectedRoute allowedRoles={["ADMINISTRATOR"]} />,
+        children: [{ path: "admin/users", Component: UserManagementPage }],
       },
       { path: "*", Component: NotFoundPage },
     ],

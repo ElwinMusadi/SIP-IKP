@@ -1,6 +1,7 @@
 import type { CloudflareEnv } from "../../../../src/types/cloudflare-env"
 import { createAuditPreparedStatement } from "../../../_shared/audit"
 import {
+  SLA_ENABLED,
   allocateReportNumber,
   calculateSlaStatus,
   validateMandatorySubmitFields,
@@ -83,12 +84,14 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     )
   }
 
-  // 2. SLA 48h calculation
+  // 2. SLA 48h calculation (retained for record-keeping even when SLA_ENABLED=false)
   const now = new Date()
   const nowIso = now.toISOString()
   const sla = calculateSlaStatus(report.incident_datetime, now)
 
-  if (sla.isOverdue && !report.overdue_reason?.trim()) {
+  // SLA enforcement gate — only blocks submission when SLA_ENABLED=true
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (SLA_ENABLED && sla.isOverdue && !report.overdue_reason?.trim()) {
     return problemResponse(
       {
         status: 422,

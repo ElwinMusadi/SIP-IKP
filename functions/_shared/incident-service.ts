@@ -1,5 +1,19 @@
 import type { IncidentStatus } from "./rbac"
 
+/**
+ * SLA MVP DEACTIVATION FLAG
+ *
+ * Set to `false` to disable SLA enforcement for MVP.
+ * When false:
+ *   - Submission is NOT blocked if overdue_reason is missing
+ *   - calculateSlaStatus still computes deadlines (retained for future re-activation)
+ *   - SLA deadline/overdue fields are still stored on the record (schema unchanged)
+ *
+ * To re-enable SLA enforcement: set this to `true`.
+ * All SLA logic is retained in code; only the enforcement gate is toggled.
+ */
+export const SLA_ENABLED = false
+
 export const INCIDENT_TYPES = ["KNC", "KTC", "KTD", "SENTINEL"] as const
 export type IncidentType = (typeof INCIDENT_TYPES)[number]
 

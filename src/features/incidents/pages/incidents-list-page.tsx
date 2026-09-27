@@ -7,7 +7,6 @@ import { useAuth } from "@/lib/use-auth"
 import { fetchIncidents } from "../api/incidents-api"
 import { IncidentStatusBadge } from "../components/incident-status-badge"
 import { RiskBadge } from "../components/risk-badge"
-import { SlaBadge } from "../components/sla-badge"
 import type { IncidentReport } from "../types/incident"
 
 export function IncidentsListPage() {
@@ -192,7 +191,6 @@ export function IncidentsListPage() {
                 <th className="px-4 py-3">Waktu Kejadian</th>
                 <th className="px-4 py-3">Pelapor / Ruangan</th>
                 <th className="px-4 py-3">Pita Risiko</th>
-                <th className="px-4 py-3">SLA 48 Jam</th>
                 <th className="px-4 py-3 text-right">Aksi</th>
               </tr>
             </thead>
@@ -241,9 +239,6 @@ export function IncidentsListPage() {
                   </td>
                   <td className="px-4 py-3.5 whitespace-nowrap">
                     <RiskBadge grade={inc.risk_grade} />
-                  </td>
-                  <td className="px-4 py-3.5 whitespace-nowrap">
-                    <SlaBadge isOverdue={inc.is_overdue_sla} />
                   </td>
                   <td className="px-4 py-3.5 text-right whitespace-nowrap">
                     <Button
