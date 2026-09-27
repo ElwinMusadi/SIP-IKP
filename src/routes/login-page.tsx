@@ -9,6 +9,13 @@ interface LocationState {
   from?: { pathname?: string }
 }
 
+const QUICK_ACCOUNTS = [
+  { label: "Nakes IBS", username: "nakes_ibs", password: "NakesIbs#2026" },
+  { label: "Kepala Ruangan", username: "kepala_ruangan", password: "KepalaRuangan#2026" },
+  { label: "Komite PMKP", username: "komite_pmkp", password: "KomitePmkp#2026" },
+  { label: "Administrator", username: "admin_ibs", password: "AdminIbs#2026" },
+]
+
 export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -38,39 +45,42 @@ export function LoginPage() {
     }
   }
 
-  const fillQuickCredential = (user: string, pass: string) => {
+  const fillCredential = (user: string, pass: string) => {
     setUsername(user)
     setPassword(pass)
     setErrorMessage(null)
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-10rem)] max-w-md flex-col justify-center px-4 py-8">
-      <div className="flex flex-col gap-6 rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-        <header className="flex flex-col items-center gap-2 text-center">
-          <div className="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-xs">
-            <IconHeartbeat className="size-7" />
+    <div className="mx-auto flex min-h-[calc(100vh-10rem)] max-w-sm flex-col justify-center px-4 py-10">
+      <div className="flex flex-col gap-6 rounded-xl border bg-card p-7 shadow-xs">
+        {/* Header */}
+        <header className="flex flex-col items-center gap-3 text-center">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <IconHeartbeat className="size-6" />
           </div>
           <div className="flex flex-col gap-0.5">
-            <h1 className="text-xl font-semibold tracking-tight">Masuk SIP-IKP IBS</h1>
+            <h1 className="text-lg font-bold tracking-tight text-foreground">Masuk SIP-IKP IBS</h1>
             <p className="text-xs text-muted-foreground">RSUD Prof. Dr. W. Z. Johannes Kupang</p>
           </div>
-          <div className="mt-2 flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-            <IconShieldCheck className="size-4" />
-            <span>Dokumen Rahasia &bull; Sesi 15 Menit</span>
+          <div className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-[11px] font-medium text-muted-foreground">
+            <IconShieldCheck className="size-3.5 text-primary" />
+            <span>Dokumen Rahasia · Sesi 15 Menit</span>
           </div>
         </header>
 
+        {/* Error alert */}
         {errorMessage && (
           <div
             aria-live="polite"
-            className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+            className="rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-xs text-destructive"
             role="alert"
           >
             {errorMessage}
           </div>
         )}
 
+        {/* Login form */}
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
@@ -103,7 +113,7 @@ export function LoginPage() {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-foreground" htmlFor="password">
-              Kata Sandi (Password)
+              Kata Sandi
             </label>
             <div className="relative flex items-center">
               <span className="pointer-events-none absolute left-3 text-muted-foreground">
@@ -125,73 +135,45 @@ export function LoginPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs">
-            <label className="flex cursor-pointer items-center gap-2 text-muted-foreground">
-              <input
-                checked={rememberMe}
-                className="rounded border-muted-foreground/30 text-primary focus:ring-primary"
-                onChange={(e) => {
-                  setRememberMe(e.target.checked)
-                }}
-                type="checkbox"
-              />
-              <span>Ingat Username di Perangkat Ini</span>
+          <div className="flex items-center gap-2 text-xs">
+            <input
+              checked={rememberMe}
+              className="rounded border-border text-primary focus:ring-primary"
+              id="remember"
+              onChange={(e) => {
+                setRememberMe(e.target.checked)
+              }}
+              type="checkbox"
+            />
+            <label className="cursor-pointer text-muted-foreground" htmlFor="remember">
+              Ingat username di perangkat ini
             </label>
           </div>
 
-          <Button className="w-full font-medium" disabled={isSubmitting} size="lg" type="submit">
+          <Button className="w-full font-semibold" disabled={isSubmitting} size="default" type="submit">
             {isSubmitting ? "Memverifikasi..." : "Masuk ke Sistem"}
           </Button>
         </form>
 
-        <section
-          aria-labelledby="dev-accounts-title"
-          className="rounded-xl border bg-muted/30 p-3 text-xs"
-        >
-          <p className="font-semibold text-foreground" id="dev-accounts-title">
-            Akun Pengembangan &amp; Pengujian:
+        {/* Quick access */}
+        <section aria-labelledby="quick-access-title" className="rounded-lg border bg-muted/20 p-3">
+          <p className="mb-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide" id="quick-access-title">
+            Akses Cepat
           </p>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <button
-              className="rounded-md border bg-card px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => {
-                fillQuickCredential("nakes_ibs", "NakesIbs#2026")
-              }}
-              type="button"
-            >
-              <span className="block font-medium text-foreground">Nakes IBS</span>
-              <span className="text-[10px]">nakes_ibs</span>
-            </button>
-            <button
-              className="rounded-md border bg-card px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => {
-                fillQuickCredential("kepala_ruangan", "KepalaRuangan#2026")
-              }}
-              type="button"
-            >
-              <span className="block font-medium text-foreground">Kepala Ruangan</span>
-              <span className="text-[10px]">kepala_ruangan</span>
-            </button>
-            <button
-              className="rounded-md border bg-card px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => {
-                fillQuickCredential("komite_pmkp", "KomitePmkp#2026")
-              }}
-              type="button"
-            >
-              <span className="block font-medium text-foreground">Komite PMKP</span>
-              <span className="text-[10px]">komite_pmkp</span>
-            </button>
-            <button
-              className="rounded-md border bg-card px-2 py-1.5 text-left text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => {
-                fillQuickCredential("admin_ibs", "AdminIbs#2026")
-              }}
-              type="button"
-            >
-              <span className="block font-medium text-foreground">Administrator</span>
-              <span className="text-[10px]">admin_ibs</span>
-            </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            {QUICK_ACCOUNTS.map(({ label, username: u, password: p }) => (
+              <button
+                key={u}
+                className="rounded-md border bg-card px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                onClick={() => {
+                  fillCredential(u, p)
+                }}
+                type="button"
+              >
+                <span className="block text-xs font-semibold text-foreground">{label}</span>
+                <span className="text-[10px] text-muted-foreground">{u}</span>
+              </button>
+            ))}
           </div>
         </section>
       </div>
