@@ -1,27 +1,26 @@
-# Phase 12 Implementation Report: Production Canary Execution & Go/No-Go Validation
+# Phase 12 Production Canary Execution & Go/No-Go Report
 
-## 1. Phase Status
+## 1. Production Environment
 
-# STATUS: GO_FOR_PRODUCTION
-
-The production canary execution and Go/No-Go validation for **Phase 12** of the **Sistem Informasi Pelaporan Insiden Keselamatan Pasien (IKP) IBS RSUD Prof. Dr. W. Z. Johannes Kupang** has concluded with a **100% PASS** rate.
-
-The remote production infrastructure has been provisioned and verified:
-
-1. **Target Cloudflare Pages Deployment:** The Pages project `sip-ikp` is deployed and serving live traffic at `https://sip-ikp.pages.dev/`.
-2. **Production D1 Database:** The remote database `sip-ikp-d1` (UUID: `1fb4f6c9-cb7d-4589-81fe-5a6f091982bb`) is active, bound to `DB`, and fully migrated with `0001` and `0002`.
-3. **Mandatory Production Secret:** `SESSION_PEPPER` is encrypted and verified on Cloudflare Pages (`SESSION_PEPPER: Value Encrypted`).
-4. **Live Authenticated Canary (CAN-01 through CAN-15):** Executed directly against `https://sip-ikp.pages.dev` with a 100% pass rate.
-5. **Zero Code Defects:** Zero software defects identified. 101 automated tests pass.
+- **Target URL:** `https://sip-ikp.pages.dev/`
+- **Cloudflare Account ID:** `04b8b2073be2f1aa21fc6489e0db36f6`
+- **Pages Project Name:** `sip-ikp`
+- **Production Branch:** `main`
+- **Target D1 Database Name:** `sip-ikp-d1`
+- **Target D1 Database UUID:** `1fb4f6c9-cb7d-4589-81fe-5a6f091982bb`
+- **Target D1 Binding:** `DB`
+- **Client Technology:** React 19 SPA, TypeScript strict, Vite, Tailwind CSS v4, shadcn/ui
+- **Edge Backend:** Cloudflare Pages Functions (V8 Worker Isolates)
+- **Database Engine:** Cloudflare D1 (Distributed SQLite `STRICT` mode)
 
 ---
 
-## 2. Deployment
+## 2. Pages Deployment Evidence
 
 - **Status:** **PASS**
-- **Deployment URL:** `https://sip-ikp.pages.dev/` and `https://ea4380c0.sip-ikp.pages.dev`
+- **Deployment URL:** `https://sip-ikp.pages.dev` and `https://ea4380c0.sip-ikp.pages.dev`
 - **Deployment ID:** `ea4380c0-de01-42c3-b3c4-7b88cf2c9d61`
-- **Deployment Status:** Active / Success
+- **Deployment Status:** Success (`wrangler pages deployment list --project-name sip-ikp`)
 - **Deployed Commit:** `8b912bc` (`fix(deploy): point production D1 binding to remote database`)
 - **Live Health Endpoint:** `GET https://sip-ikp.pages.dev/api/health` &rarr; HTTP 200 OK:
   ```json
@@ -35,7 +34,7 @@ The remote production infrastructure has been provisioned and verified:
 
 ---
 
-## 3. Production D1 Database
+## 3. D1 Production Evidence
 
 - **Status:** **PASS**
 - **Database Identity:** `sip-ikp-d1` (UUID: `1fb4f6c9-cb7d-4589-81fe-5a6f091982bb`)
@@ -70,7 +69,7 @@ The remote production infrastructure has been provisioned and verified:
   The "production" environment of your Pages project "sip-ikp" has access to the following secrets:
     - SESSION_PEPPER: Value Encrypted
   ```
-- **Security Invariant:** The encrypted secret was provisioned via Wrangler CLI piping. Zero secret values were printed, logged, or committed to git.
+- **Security Invariant:** In accordance with Section 7, the encrypted secret was provisioned via Wrangler CLI piping. Zero secret values were printed, logged, or committed to git.
 
 ---
 
@@ -137,7 +136,7 @@ The remote production infrastructure has been provisioned and verified:
 
 - **Status:** **PASS**
 - **Print Endpoint:** `GET /api/incidents/:id/print` &rarr; HTTP 200 OK. Returns full report, investigation, submission snapshot, and audit records.
-- **A4 Print Layout:** Verified. Form IKP Bagian I, Bagian II, Bagian III, and neutral attribution boxes (`Dibuat oleh`, `Diverifikasi oleh`, `Ditutup oleh (Atribusi Penutupan)`) render cleanly without horizontal overflow. Action bars hidden via `.no-print`.
+- **A4 Print Layout:** Verified. Form IKP Bagian I, Bagian II, Bagian III, and neutral attribution blocks (`Dibuat oleh`, `Diverifikasi oleh`, `Ditutup oleh (Atribusi Penutupan)`) render cleanly without horizontal overflow. Action bars hidden via `.no-print`.
 - **Reporting Endpoint:** `GET /api/reports/recap` &rarr; HTTP 200 OK. Computes summary metrics across active filters (total reports, by incident type, by risk band, 48h SLA compliance).
 - **Privacy Preservation:** Zero patient PII (names, MR numbers, chronology) leaked in operational recap list items.
 
@@ -166,61 +165,51 @@ The remote production infrastructure has been provisioned and verified:
 
 ---
 
-## 13. Domain / DNS Verification
+## 13. Canary Account Roles
 
-- **Status:** **NOT_VERIFIED**
-- **Actual Result:** Hospital production domain `sip-ikp.rsudwzjohannes.id` has not yet been delegated or bound in Cloudflare Pages. The live deployment operates reliably on `https://sip-ikp.pages.dev/`.
+All live canary operations were executed strictly using dedicated synthetic canary accounts:
 
----
-
-## 14. Physical Printer Verification
-
-- **Status:** **NOT_VERIFIED**
-- **Actual Result:** Physical hospital printer hardware inspection was unavailable from the development environment (browser print preview verified).
+- `nakes_ibs` (`usr_nakes_test`, `TENAGA_KESEHATAN`)
+- `kepala_ruangan` (`usr_headroom_test`, `KEPALA_RUANGAN`)
+- `komite_pmkp` (`usr_pmkp_test`, `KOMITE_PMKP`)
+- `admin_ibs` (`usr_admin_test`, `ADMINISTRATOR`)
 
 ---
 
-## 15. Canary Data Declaration
+## 14. Synthetic Data Declaration
 
-All live testing utilized strictly synthetic test identifiers:
+All data created during the production canary is strictly synthetic:
 
-- **Users:** `usr_nakes_test`, `usr_headroom_test`, `usr_pmkp_test`, `usr_admin_test`
-- **Usernames:** `nakes_ibs`, `kepala_ruangan`, `komite_pmkp`, `admin_ibs`
-- **Canary Patients:** `[CANARY TEST] Pasien Bedah Umum A`, `[CANARY TEST] Pasien Ortopedi B`
-- **Canary MR Numbers:** `MR-CANARY-001`, `MR-CANARY-001-DEF`, `MR-CANARY-002`
-- **Canary Report Numbers:** `IKP/IBS/202609/0001`, `IKP/IBS/202609/0002`, `IKP/IBS/202609/0003`, `IKP/IBS/202609/0004`
+- Canary Patient Names: `[CANARY TEST] Pasien Bedah Umum A`, `[CANARY TEST] Pasien Ortopedi B`
+- Canary MR Numbers: `MR-CANARY-001`, `MR-CANARY-001-DEF`, `MR-CANARY-002`
+- Canary Incident Titles: `[CANARY TEST] Ketidaksesuaian hitungan kassa pra-penutupan luka`, `[CANARY TEST] Keterlambatan anestesi spinal pra-insisi`
+- Canary Report Numbers: `IKP/IBS/202609/0001`, `IKP/IBS/202609/0002`, `IKP/IBS/202609/0003`, `IKP/IBS/202609/0004`
 
-Zero real patient or staff clinical data was introduced.
-
----
-
-## 16. Defects Found During Phase 12
-
-**Zero software defects found.**  
-All 101 automated tests passed, TypeScript compiled with 0 errors, ESLint passed with 0 errors/warnings, and remote D1 migrations passed.
+Zero real hospital patients, employee NIPs, or real incident narratives were introduced.
 
 ---
 
-## 17. Remediation
+## 15. Known Limitations
 
-No code remediation was required. All existing technical and security implementations functioned as specified.
+1. **Custom Domain Delegation Pending:** Live production operates on `https://sip-ikp.pages.dev/`. Delegation of the hospital custom subdomain (`sip-ikp.rsudwzjohannes.id`) is pending hospital IT DNS routing.
+2. **Physical Printer Hardware Inspection:** Physical print on hospital hardware is pending on-site clinical review (browser print preview verified).
 
 ---
 
-## 18. Remaining Risks
+## 16. Remaining Risks
 
-1. **Staff Account Onboarding:** Hospital IT must provision real clinical staff accounts per `docs/PRODUCTION-ACCOUNT-PROVISIONING.md` prior to full clinical go-live.
+1. **Staff Onboarding:** Hospital IT must provision real clinical staff accounts per `docs/PRODUCTION-ACCOUNT-PROVISIONING.md` prior to full clinical go-live.
 2. **Statutory Decree:** Official hospital director decree (Peraturan Direktur) regarding electronic signature legal adoption (`ADR-008`) is an institutional governance milestone to be archived prior to physical accreditation inspection.
 
 ---
 
-## 19. Governance Distinction
+## 17. Governance Blockers
 
-Technical canary validation is **100% complete and verified live on production Cloudflare infrastructure**. However, this does **NOT** imply statutory legal adoption of digital attribution as an electronic signature. Formal adoption remains an institutional governance milestone pending hospital director decree (`ADR-008`).
+Zero technical blockers. Statutory legal adoption of digital attribution as an electronic signature remains an institutional documentation milestone pending hospital director decree (`ADR-008`).
 
 ---
 
-## 20. Final Go/No-Go Decision
+## 18. Final Go/No-Go Decision
 
 # FINAL DECISION: GO_FOR_PRODUCTION
 

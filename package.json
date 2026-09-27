@@ -28,7 +28,8 @@
     "d1:migrate": "node --experimental-strip-types database/d1-manager.ts migrate",
     "d1:seed": "node --experimental-strip-types database/d1-manager.ts seed",
     "d1:reset": "node --experimental-strip-types database/d1-manager.ts reset",
-    "d1:validate": "node --experimental-strip-types database/d1-manager.ts validate"
+    "d1:validate": "node --experimental-strip-types database/d1-manager.ts validate",
+    "canary:verify": "node --experimental-strip-types database/canary-runner.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
