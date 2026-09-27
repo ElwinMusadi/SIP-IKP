@@ -18,6 +18,7 @@ export default defineConfig([
     ".gemini",
     ".github/skills",
     ".kilocode",
+    ".kilo",
   ]),
   {
     files: ["**/*.{js,mjs,cjs}"],
@@ -44,6 +45,7 @@ export default defineConfig([
     },
     rules: {
       ...reactHooks.configs.flat.recommended.rules,
+      "react-hooks/incompatible-library": "off",
       "react-refresh/only-export-components": [
         "warn",
         { allowConstantExport: true, allowExportNames: ["buttonVariants", "badgeVariants"] },

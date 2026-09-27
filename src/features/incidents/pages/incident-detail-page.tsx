@@ -362,7 +362,11 @@ export function IncidentDetailPage() {
               <dt className="text-muted-foreground">Penanggung Biaya</dt>
               <dd className="text-foreground">{report.patient_payer_type || "-"}</dd>
             </div>
-            <div className="col-span-2">
+            <div>
+              <dt className="text-muted-foreground">Jenis Pelayanan</dt>
+              <dd className="text-foreground">{report.patient_care_type || "-"}</dd>
+            </div>
+            <div>
               <dt className="text-muted-foreground">Tanggal &amp; Jam Masuk RS</dt>
               <dd className="text-foreground">
                 {report.admission_datetime
@@ -400,7 +404,10 @@ export function IncidentDetailPage() {
             </div>
             <div>
               <dt className="text-muted-foreground">Pelapor Pertama</dt>
-              <dd className="text-foreground">{report.initial_reporter_category || "-"}</dd>
+              <dd className="text-foreground">
+                {report.initial_reporter_category || "-"}
+                {report.initial_reporter_detail ? ` (${report.initial_reporter_detail})` : ""}
+              </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">Tempat / Kamar Operasi</dt>

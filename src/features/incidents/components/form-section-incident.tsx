@@ -190,6 +190,20 @@ export function FormSectionIncident({
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-foreground" htmlFor="initial_reporter_detail">
+            Detail Pelapor Pertama (Opsional / Jika Non-Nakes)
+          </label>
+          <input
+            {...register("initial_reporter_detail")}
+            className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+            disabled={disabled}
+            id="initial_reporter_detail"
+            placeholder="Contoh: Petugas Kebersihan, Petugas Keamanan, dll."
+            type="text"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-foreground" htmlFor="incident_target">
             Insiden Terjadi Pada (Sasaran Insiden) <span className="text-destructive">*</span>
           </label>
@@ -209,6 +223,29 @@ export function FormSectionIncident({
           {errors.incident_target && (
             <p className="text-xs text-destructive">{errors.incident_target.message}</p>
           )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-foreground" htmlFor="patient_care_type">
+            Jenis Pelayanan Pasien
+          </label>
+          <select
+            {...register("patient_care_type")}
+            className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+            disabled={disabled}
+            id="patient_care_type"
+          >
+            <option value="">-- Pilih Jenis Pelayanan --</option>
+            <option value="Rawat Inap Bedah">Rawat Inap Bedah</option>
+            <option value="Rawat Jalan / Poliklinik Bedah">Rawat Jalan / Poliklinik Bedah</option>
+            <option value="Instalasi Gawat Darurat (IGD) Bedah">
+              Instalasi Gawat Darurat (IGD) Bedah
+            </option>
+            <option value="One Day Care (ODC) / Bedah Sehari">
+              One Day Care (ODC) / Bedah Sehari
+            </option>
+            <option value="Lainnya">Lainnya</option>
+          </select>
         </div>
 
         {incidentTarget === "LAIN_LAIN" && (
