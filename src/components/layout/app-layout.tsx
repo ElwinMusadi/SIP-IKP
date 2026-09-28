@@ -12,13 +12,14 @@ import {
   IconTableOptions,
   IconUsers,
 } from "@tabler/icons-react"
-import { Link, NavLink, Outlet, useNavigate } from "react-router"
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -83,8 +84,21 @@ function canReportIncident(role: UserRole | undefined): boolean {
   return role === "TENAGA_KESEHATAN" || role === "KEPALA_RUANGAN" || role === "KOMITE_PMKP"
 }
 
+function isNavItemActive(pathname: string, to: string): boolean {
+  if (to === "/") return pathname === "/"
+
+  const matchesRoute = pathname === to || pathname.startsWith(`${to}/`)
+
+  if (to === "/laporan") {
+    return matchesRoute && pathname !== "/laporan/rekap" && !pathname.startsWith("/laporan/rekap/")
+  }
+
+  return matchesRoute
+}
+
 export function AppLayout() {
   const { user, logout } = useAuth()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -130,23 +144,25 @@ export function AppLayout() {
 
           {/* Desktop nav */}
           <nav aria-label="Navigasi utama" className="hidden items-center gap-0.5 lg:flex">
-            {navItems.map((item) => (
-              <NavLink
-                className={({ isActive }) =>
-                  cn(
+            {navItems.map((item) => {
+              const isActive = isNavItemActive(pathname, item.to)
+
+              return (
+                <Link
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
                     "inline-flex min-h-10 items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )
-                }
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-              >
-                {item.label}
-              </NavLink>
-            ))}
+                  )}
+                  key={item.to}
+                  to={item.to}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </nav>
 
           {/* Right area */}
@@ -184,32 +200,38 @@ export function AppLayout() {
                   <IconChevronDown aria-hidden="true" className="hidden size-3.5 shrink-0 text-muted-foreground md:block" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-60">
-                  <DropdownMenuLabel className="font-normal">
-                    <span className="block text-sm font-semibold text-foreground">
-                      {user.fullName}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-muted-foreground">
-                      {getRoleLabel(user.role)}
-                      {user.unitId ? ` · Unit ${user.unitId}` : ""}
-                    </span>
-                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="font-normal">
+                      <span className="block text-sm font-semibold text-foreground">
+                        {user.fullName}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {getRoleLabel(user.role)}
+                        {user.unitId ? ` · Unit ${user.unitId}` : ""}
+                      </span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem render={<Link to="/" />}>
-                    <IconHome data-icon="inline-start" />
-                    Beranda
-                  </DropdownMenuItem>
-                  <DropdownMenuItem render={<Link to="/laporan" />}>
-                    <IconLayoutList data-icon="inline-start" />
-                    Laporan Insiden
-                  </DropdownMenuItem>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem render={<Link to="/" />}>
+                      <IconHome data-icon="inline-start" />
+                      Beranda
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link to="/laporan" />}>
+                      <IconLayoutList data-icon="inline-start" />
+                      Laporan Insiden
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={handleLogout}
-                  >
-                    <IconLogout data-icon="inline-start" />
-                    Keluar
-                  </DropdownMenuItem>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={handleLogout}
+                    >
+                      <IconLogout data-icon="inline-start" />
+                      Keluar
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
@@ -268,26 +290,28 @@ export function AppLayout() {
 
                 <nav aria-label="Navigasi mobile" className="flex-1 overflow-y-auto px-3 py-3">
                   <ul className="flex flex-col gap-0.5">
-                    {navItems.map((item) => (
-                      <li key={item.to}>
-                        <NavLink
-                          className={({ isActive }) =>
-                            cn(
+                    {navItems.map((item) => {
+                      const isActive = isNavItemActive(pathname, item.to)
+
+                      return (
+                        <li key={item.to}>
+                          <Link
+                            aria-current={isActive ? "page" : undefined}
+                            className={cn(
                               "flex min-h-10 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
                               isActive
                                 ? "bg-primary/10 text-primary"
                                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                            )
-                          }
-                          end={item.to === "/"}
-                          onClick={() => { setMobileOpen(false); }}
-                          to={item.to}
-                        >
-                          <item.icon className="size-4 shrink-0" />
-                          <span>{item.label}</span>
-                        </NavLink>
-                      </li>
-                    ))}
+                            )}
+                            onClick={() => { setMobileOpen(false); }}
+                            to={item.to}
+                          >
+                            <item.icon className="size-4 shrink-0" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </li>
+                      )
+                    })}
                     {user && showReportAction && (
                       <li className="mt-2 px-1 lg:hidden">
                         <Button

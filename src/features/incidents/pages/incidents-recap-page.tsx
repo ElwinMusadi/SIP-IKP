@@ -211,8 +211,9 @@ export function IncidentsRecapPage() {
     void loadRecap(EMPTY_FILTERS)
   }
 
-  const activeFilterCount = Object.values(filters).filter((value) => value !== "" && value !== null)
-    .length
+  const activeFilterCount = Object.values(filters).filter(
+    (value) => value !== "" && value !== null,
+  ).length
 
   const summary = recapData?.summary
   const items = recapData?.items ?? []
@@ -294,7 +295,9 @@ export function IncidentsRecapPage() {
           aria-controls="recap-filters"
           aria-expanded={showFilters}
           className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/40"
-          onClick={() => { setShowFilters((open) => !open); }}
+          onClick={() => {
+            setShowFilters((open) => !open)
+          }}
           type="button"
         >
           <span className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -420,9 +423,7 @@ export function IncidentsRecapPage() {
               <p className="font-heading text-4xl font-semibold text-foreground tabular-nums">
                 {summary.totalReports}
               </p>
-              <p className="text-xs text-muted-foreground">
-                Sesuai rentang filter yang diterapkan
-              </p>
+              <p className="text-xs text-muted-foreground">Sesuai rentang filter yang diterapkan</p>
             </CardContent>
           </Card>
 
@@ -565,23 +566,33 @@ export function IncidentsRecapPage() {
 
             {/* Desktop table (also used for print) */}
             <div className="hidden overflow-x-auto md:block print:block">
-              <Table className="print:text-[10px]">
+              <Table className="min-w-312 table-fixed print:min-w-0 print:text-[10px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent print:border-black">
-                    <TableHead className="print:text-black">No. Laporan</TableHead>
-                    <TableHead className="print:text-black">Waktu Insiden</TableHead>
-                    <TableHead className="print:text-black">Judul Insiden</TableHead>
-                    <TableHead className="print:text-black">Jenis / Sasaran</TableHead>
-                    <TableHead className="print:text-black">Lokasi</TableHead>
-                    <TableHead className="print:text-black">Pita Risiko</TableHead>
-                    <TableHead className="print:text-black">Status</TableHead>
-                    <TableHead className="text-right no-print">Aksi</TableHead>
+                    <TableHead className="w-38 print:w-[11%] print:text-black">
+                      No. Laporan
+                    </TableHead>
+                    <TableHead className="w-40 print:w-[15%] print:text-black">
+                      Waktu Insiden
+                    </TableHead>
+                    <TableHead className="w-76 print:w-[25%] print:text-black">
+                      Judul Insiden
+                    </TableHead>
+                    <TableHead className="w-32 print:w-[16%] print:text-black">
+                      Jenis / Sasaran
+                    </TableHead>
+                    <TableHead className="w-50 print:w-[13%] print:text-black">Lokasi</TableHead>
+                    <TableHead className="w-34 print:w-[10%] print:text-black">
+                      Pita Risiko
+                    </TableHead>
+                    <TableHead className="w-32 print:w-[10%] print:text-black">Status</TableHead>
+                    <TableHead className="w-28 text-right no-print">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((item) => (
                     <TableRow key={item.id} className="print:border-black">
-                      <TableCell className="font-mono text-xs font-semibold whitespace-nowrap print:text-black">
+                      <TableCell className="font-mono text-xs font-medium whitespace-nowrap print:text-black">
                         {item.report_number ?? "DRAF"}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap print:text-black">
@@ -592,9 +603,9 @@ export function IncidentsRecapPage() {
                         })}{" "}
                         {item.incident_timezone === "Asia/Makassar" ? "WITA" : ""}
                       </TableCell>
-                      <TableCell className="max-w-xs font-medium print:text-black">
+                      <TableCell className="overflow-hidden font-medium whitespace-normal print:text-black">
                         <button
-                          className="line-clamp-2 text-left hover:text-primary hover:underline hover:underline-offset-2 no-print"
+                          className="block w-full min-w-0 overflow-hidden text-left text-ellipsis whitespace-nowrap hover:text-primary hover:underline hover:underline-offset-2 no-print"
                           onClick={() => {
                             void navigate(`/laporan/${item.id}`)
                           }}
@@ -602,7 +613,7 @@ export function IncidentsRecapPage() {
                         >
                           {item.incident_title || "(Tanpa judul)"}
                         </button>
-                        <span className="hidden print:inline">
+                        <span className="hidden wrap-break-word whitespace-normal print:block">
                           {item.incident_title || "(Tanpa judul)"}
                         </span>
                       </TableCell>
