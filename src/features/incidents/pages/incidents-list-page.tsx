@@ -77,7 +77,9 @@ export function IncidentsListPage() {
 
   const initialStatus = searchParams.get("status")
   const [selectedStatus, setSelectedStatus] = useState<string>(
-    initialStatus && VALID_STATUSES.includes(initialStatus as IncidentStatus) ? initialStatus : "ALL",
+    initialStatus && VALID_STATUSES.includes(initialStatus as IncidentStatus)
+      ? initialStatus
+      : "ALL",
   )
   const [searchQuery, setSearchQuery] = useState("")
   const [page, setPage] = useState(1)
@@ -125,7 +127,10 @@ export function IncidentsListPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredIncidents.length / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
-  const pagedIncidents = filteredIncidents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const pagedIncidents = filteredIncidents.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  )
 
   const canCreate = user && user.role !== "ADMINISTRATOR"
 
@@ -142,7 +147,9 @@ export function IncidentsListPage() {
           <>
             <Button
               disabled={isLoading}
-              onClick={() => { setReloadKey((key) => key + 1); }}
+              onClick={() => {
+                setReloadKey((key) => key + 1)
+              }}
               size="sm"
               variant="outline"
             >
@@ -162,8 +169,13 @@ export function IncidentsListPage() {
         title="Laporan Insiden Keselamatan Pasien"
       >
         {/* Filter status */}
-        <div className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
-          <Tabs onValueChange={(value) => { handleStatusChange(String(value)); }} value={selectedStatus}>
+        <div className="-mx-1 overflow-x-auto px-1 pb-1 scrollbar-thin">
+          <Tabs
+            onValueChange={(value) => {
+              handleStatusChange(String(value))
+            }}
+            value={selectedStatus}
+          >
             <TabsList className="h-auto w-max gap-1 bg-transparent p-0">
               {FILTER_TABS.map((tab) => (
                 <TabsTrigger
@@ -198,14 +210,26 @@ export function IncidentsListPage() {
         </InputGroup>
         {!isLoading && !errorMessage && (
           <p aria-live="polite" className="text-xs text-muted-foreground">
-            Menampilkan <strong className="font-semibold text-foreground tabular-nums">{pagedIncidents.length}</strong>{" "}
-            dari <strong className="font-semibold text-foreground tabular-nums">{filteredIncidents.length}</strong> laporan
+            Menampilkan{" "}
+            <strong className="font-semibold text-foreground tabular-nums">
+              {pagedIncidents.length}
+            </strong>{" "}
+            dari{" "}
+            <strong className="font-semibold text-foreground tabular-nums">
+              {filteredIncidents.length}
+            </strong>{" "}
+            laporan
           </p>
         )}
       </div>
 
       {errorMessage ? (
-        <ErrorState message={errorMessage} onRetry={() => { setReloadKey((key) => key + 1); }} />
+        <ErrorState
+          message={errorMessage}
+          onRetry={() => {
+            setReloadKey((key) => key + 1)
+          }}
+        />
       ) : isLoading ? (
         <TableSkeleton rows={6} />
       ) : filteredIncidents.length === 0 ? (
@@ -235,7 +259,11 @@ export function IncidentsListPage() {
               ? "Tidak ada laporan yang cocok dengan kata kunci atau filter status ini."
               : "Belum ada laporan insiden di Instalasi Bedah Sentral."
           }
-          title={searchQuery || selectedStatus !== "ALL" ? "Laporan tidak ditemukan" : "Belum ada laporan"}
+          title={
+            searchQuery || selectedStatus !== "ALL"
+              ? "Laporan tidak ditemukan"
+              : "Belum ada laporan"
+          }
         />
       ) : (
         <Card className="py-0">
@@ -278,13 +306,17 @@ export function IncidentsListPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        <span className="block tabular-nums">{formatTanggal(inc.incident_datetime)}</span>
+                        <span className="block tabular-nums">
+                          {formatTanggal(inc.incident_datetime)}
+                        </span>
                         <span className="block tabular-nums">
                           {formatWaktu(inc.incident_datetime)} {inc.incident_timezone || "WITA"}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="line-clamp-1 text-sm font-medium">{inc.reporter_name}</span>
+                        <span className="line-clamp-1 text-sm font-medium">
+                          {inc.reporter_name}
+                        </span>
                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                           {inc.incident_location ?? "IBS"}
                         </span>
@@ -319,7 +351,10 @@ export function IncidentsListPage() {
               {pagedIncidents.map((inc, index) => (
                 <li key={inc.id}>
                   <Link
-                    className={cn("block px-4 py-3.5 transition-colors hover:bg-muted/40", index > 0 && "border-t")}
+                    className={cn(
+                      "block px-4 py-3.5 transition-colors hover:bg-muted/40",
+                      index > 0 && "border-t",
+                    )}
                     to={`/laporan/${inc.id}`}
                   >
                     <span className="flex items-start justify-between gap-2">
@@ -351,7 +386,9 @@ export function IncidentsListPage() {
         <nav aria-label="Navigasi halaman" className="flex items-center justify-between">
           <Button
             disabled={currentPage <= 1}
-            onClick={() => { setPage(currentPage - 1); }}
+            onClick={() => {
+              setPage(currentPage - 1)
+            }}
             size="sm"
             variant="outline"
           >
@@ -363,7 +400,9 @@ export function IncidentsListPage() {
           </p>
           <Button
             disabled={currentPage >= totalPages}
-            onClick={() => { setPage(currentPage + 1); }}
+            onClick={() => {
+              setPage(currentPage + 1)
+            }}
             size="sm"
             variant="outline"
           >
