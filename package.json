@@ -8,7 +8,10 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "npm run dev:remote",
+    "dev:remote": "node -e \"console.warn('PERINGATAN: Local development terhubung langsung ke D1 PRODUCTION. Operasi create, edit, delete, login, dan logout akan mengubah data cloud.')\" && npm run build && wrangler pages dev dist --port 8788",
+    "dev:ui": "vite",
+    "dev:d1:local": "npm run build && wrangler pages dev dist --port 8788 --d1 DB",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
@@ -17,7 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "preview": "vite preview",
-    "cf:dev": "npm run build && wrangler pages dev dist --d1 DB",
+    "cf:dev": "npm run dev:remote",
     "cf:validate": "wrangler pages functions build --outdir .wrangler/tmp/functions-build",
     "cf:types": "wrangler types --env-interface CloudflareEnv src/types/cloudflare-env.d.ts",
     "d1:harness:setup": "node --experimental-strip-types test-support/d1/harness.ts setup",

@@ -13,6 +13,9 @@
       "database_name": "sip-ikp-d1",
       "database_id": "1fb4f6c9-cb7d-4589-81fe-5a6f091982bb",
       "migrations_dir": "./database/migrations",
+      // Local Pages development reads the existing Cloudflare D1 data.
+      // This flag is ignored for deployed bindings.
+      "remote": true,
     },
   ],
 }
