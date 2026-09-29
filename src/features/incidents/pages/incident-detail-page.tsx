@@ -4,6 +4,7 @@ import {
   IconCheck,
   IconPrinter,
   IconRefresh,
+  IconTrash,
 } from "@tabler/icons-react"
 import { useLocation, useNavigate, useParams } from "react-router"
 
@@ -11,6 +12,7 @@ import { DefinitionGrid } from "@/components/shared/definition-grid"
 import { ErrorState } from "@/components/shared/error-state"
 import { InlineLoader } from "@/components/shared/loading-states"
 import { PageHeader } from "@/components/shared/page-header"
+import { ConfirmDialog } from "@/components/shared/confirm-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,6 +20,7 @@ import { useAuth } from "@/lib/use-auth"
 import {
   assignRiskGrade,
   completeInvestigation,
+  deleteIncident,
   emergencyCorrection,
   fetchIncidentAudit,
   fetchIncidentById,
@@ -68,6 +71,8 @@ export function IncidentDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const state = location.state as LocationState | null
   const [showSuccessBanner, setShowSuccessBanner] = useState(Boolean(state?.submitSuccess))
@@ -156,6 +161,7 @@ export function IncidentDetailPage() {
   // Permissions
   const isHeadOfRoom = user?.role === "KEPALA_RUANGAN"
   const isPmkp = user?.role === "KOMITE_PMKP"
+  const isAdministrator = user?.role === "ADMINISTRATOR"
   const statusMeta = INCIDENT_STATUS_META[report.status] as StatusMeta | undefined
 
   return (
@@ -163,6 +169,11 @@ export function IncidentDetailPage() {
       <PageHeader
         actions={
           <>
+            {isAdministrator && (
+              <Button className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => { setShowDeleteConfirm(true) }} size="sm" variant="outline">
+                <IconTrash data-icon="inline-start" /> Hapus
+              </Button>
+            )}
             <Button onClick={() => void loadReport()} size="sm" variant="outline">
               <IconRefresh data-icon="inline-start" />
               <span className="hidden sm:inline">Segarkan</span>
@@ -512,6 +523,23 @@ export function IncidentDetailPage() {
           await loadReport()
         }}
         report={report}
+      />
+      <ConfirmDialog
+        busy={isDeleting}
+        cancelLabel="Batal"
+        confirmLabel="Hapus Laporan"
+        description="Administrator akan menghapus laporan ini secara permanen, termasuk data terkait. Tindakan ini tidak dapat dibatalkan."
+        onConfirm={() => {
+          setIsDeleting(true)
+          void deleteIncident(report.id, csrfToken ?? undefined)
+            .then(() => { void navigate("/laporan", { replace: true }) })
+            .catch((error: unknown) => { setShowDeleteConfirm(false); setErrorMessage(error instanceof Error ? error.message : "Gagal menghapus laporan.") })
+            .finally(() => { setIsDeleting(false) })
+        }}
+        onOpenChange={setShowDeleteConfirm}
+        open={showDeleteConfirm}
+        title="Hapus laporan ini?"
+        tone="destructive"
       />
     </div>
   )

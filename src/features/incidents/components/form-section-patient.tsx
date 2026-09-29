@@ -1,15 +1,17 @@
-import type { FieldErrors, UseFormRegister } from "react-hook-form"
+import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form"
 
 import { FormSection } from "@/components/shared/form-section"
 import type { IncidentFormData } from "../schemas/incident-form-schema"
 import type { MasterDataPayload } from "../types/incident"
-import { SelectField, TextField } from "./form-controls"
+import { DateField, SelectField, TextField } from "./form-controls"
 
 interface FormSectionPatientProps {
   register: UseFormRegister<IncidentFormData>
   errors: FieldErrors<IncidentFormData>
   masterData?: MasterDataPayload | null
   disabled?: boolean
+  watch: UseFormWatch<IncidentFormData>
+  setValue: UseFormSetValue<IncidentFormData>
 }
 
 const AGE_CATEGORIES = [
@@ -39,6 +41,8 @@ export function FormSectionPatient({
   errors,
   masterData,
   disabled = false,
+  watch,
+  setValue,
 }: FormSectionPatientProps) {
   const payerOptions =
     masterData?.payerTypes.map((payer) => ({ value: payer.name, label: payer.name })) ??
@@ -108,15 +112,16 @@ export function FormSectionPatient({
           register={register}
           required
         />
-        <TextField
+        <DateField
           className="sm:col-span-2 sm:max-w-md"
           disabled={disabled}
           error={errors.admission_datetime?.message}
           label="Tanggal & Jam Masuk Rumah Sakit"
           name="admission_datetime"
-          register={register}
+          setValue={setValue}
+          watch={watch}
           required
-          type="datetime-local"
+          mode="datetime"
         />
       </div>
     </FormSection>

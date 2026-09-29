@@ -656,6 +656,32 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     expect(auditRecords.filter((a) => a.incident_id === incidentId)).toHaveLength(0)
   })
 
+  it("allows Administrator to hard delete a completed report", async () => {
+    const { db, incidents, auditRecords } = createInMemoryD1()
+    incidents.set("inc_completed_admin_delete", {
+      id: "inc_completed_admin_delete",
+      status: "COMPLETED",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 8,
+    })
+    auditRecords.push({ id: "audit_completed", incident_id: "inc_completed_admin_delete" })
+
+    const response = await callHandler(
+      onIncidentDelete,
+      new Request("https://example.test/api/incidents/inc_completed_admin_delete", {
+        method: "DELETE",
+      }),
+      db,
+      { requestId: "req_admin_delete_completed", auth: adminActor },
+      { id: "inc_completed_admin_delete" },
+    )
+
+    expect(response.status).toBe(200)
+    expect(incidents.has("inc_completed_admin_delete")).toBe(false)
+    expect(auditRecords.filter((record) => record.incident_id === "inc_completed_admin_delete")).toHaveLength(0)
+  })
+
   it("enforces mandatory validation on submit and successfully submits complete report", async () => {
     const { db, snapshots, auditRecords } = createInMemoryD1()
 

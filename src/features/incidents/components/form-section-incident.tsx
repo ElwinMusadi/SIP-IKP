@@ -1,9 +1,9 @@
-import type { FieldErrors, UseFormRegister, UseFormWatch } from "react-hook-form"
+import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form"
 
 import { FormSection } from "@/components/shared/form-section"
 import type { IncidentFormData } from "../schemas/incident-form-schema"
 import type { MasterDataPayload } from "../types/incident"
-import { SelectField, TextAreaField, TextField } from "./form-controls"
+import { DateField, SelectField, TextAreaField, TextField } from "./form-controls"
 
 interface FormSectionIncidentProps {
   register: UseFormRegister<IncidentFormData>
@@ -11,6 +11,7 @@ interface FormSectionIncidentProps {
   watch: UseFormWatch<IncidentFormData>
   masterData?: MasterDataPayload | null
   disabled?: boolean
+  setValue: UseFormSetValue<IncidentFormData>
 }
 
 const INITIAL_REPORTER_CATEGORIES = [
@@ -83,6 +84,7 @@ export function FormSectionIncident({
   watch,
   masterData,
   disabled = false,
+  setValue,
 }: FormSectionIncidentProps) {
   const incidentTarget = watch("incident_target")
 
@@ -122,14 +124,15 @@ export function FormSectionIncident({
           register={register}
           required
         />
-        <TextField
+        <DateField
           disabled={disabled}
           error={errors.incident_datetime?.message}
           label="Tanggal & Waktu Insiden"
           name="incident_datetime"
-          register={register}
+          setValue={setValue}
+          watch={watch}
           required
-          type="datetime-local"
+          mode="datetime"
         />
         <SelectField
           disabled={disabled}

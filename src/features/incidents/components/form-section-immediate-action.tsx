@@ -8,7 +8,6 @@ interface FormSectionImmediateActionProps {
   register: UseFormRegister<IncidentFormData>
   errors: FieldErrors<IncidentFormData>
   watch: UseFormWatch<IncidentFormData>
-  isOverdue?: boolean
   disabled?: boolean
 }
 
@@ -31,7 +30,6 @@ export function FormSectionImmediateAction({
   register,
   errors,
   watch,
-  isOverdue = false,
   disabled = false,
 }: FormSectionImmediateActionProps) {
   const similarOccurred = watch("similar_incident_occurred")
@@ -87,21 +85,6 @@ export function FormSectionImmediateAction({
             required
             rows={2}
           />
-        )}
-        {isOverdue && (
-          <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:col-span-2">
-            <TextAreaField
-              disabled={disabled}
-              error={errors.overdue_reason?.message}
-              hint="Pelaporan melewati batas 2×24 jam sejak insiden — jelaskan alasannya."
-              label="Alasan Keterlambatan Pelaporan (> 48 Jam)"
-              name="overdue_reason"
-              placeholder="Jelaskan kendala atau alasan mengapa pelaporan melewati batas waktu 2×24 jam…"
-              register={register}
-              required
-              rows={2}
-            />
-          </div>
         )}
       </div>
     </FormSection>

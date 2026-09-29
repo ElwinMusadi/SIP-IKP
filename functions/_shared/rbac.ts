@@ -37,6 +37,12 @@ export function canReadReport(user: AuthenticatedUser, report: IncidentReportSum
     return false
   }
 
+  // Administrator needs access to every report status for lifecycle administration.
+  // Clinical fields remain protected by sanitizeReportForUser.
+  if (user.role === "ADMINISTRATOR") {
+    return true
+  }
+
   // Drafts are strictly private to created_by
   if (report.status === "DRAFT") {
     return report.created_by_user_id === user.id
@@ -64,6 +70,9 @@ export function canEditDraft(user: AuthenticatedUser, report: IncidentReportSumm
 export function canDeleteDraft(user: AuthenticatedUser, report: IncidentReportSummary): boolean {
   if (!user.isActive) {
     return false
+  }
+  if (user.role === "ADMINISTRATOR") {
+    return true
   }
   return report.status === "DRAFT" && report.created_by_user_id === user.id
 }

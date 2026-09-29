@@ -78,7 +78,7 @@ export async function saveDraft(
   return handleResponse<IncidentReport>(res)
 }
 
-export async function deleteDraft(id: string, csrfToken?: string): Promise<{ deleted: boolean }> {
+export async function deleteIncident(id: string, csrfToken?: string): Promise<{ deleted: boolean }> {
   const res = await fetch(`/api/incidents/${id}`, {
     method: "DELETE",
     headers: {

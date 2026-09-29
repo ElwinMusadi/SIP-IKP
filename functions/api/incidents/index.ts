@@ -50,9 +50,11 @@ export const onRequestGet: PagesFunction<CloudflareEnv, string, RequestContextDa
   `
   const params: unknown[] = []
 
-  // Drafts are strictly private to created_by; non-drafts are visible to IBS staff
-  query += ` AND (status != 'DRAFT' OR created_by_user_id = ?)`
-  params.push(user.id)
+  // Drafts are private to their creator, except for Administrator lifecycle management.
+  if (user.role !== "ADMINISTRATOR") {
+    query += ` AND (status != 'DRAFT' OR created_by_user_id = ?)`
+    params.push(user.id)
+  }
 
   if (statusFilter) {
     query += ` AND status = ?`

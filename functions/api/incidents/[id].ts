@@ -380,14 +380,15 @@ export const onRequestDelete: PagesFunction<CloudflareEnv, "id", RequestContextD
         code: "FORBIDDEN",
         title: "Akses Ditolak",
         detail:
-          "Hanya pembuat draf yang dapat menghapus draf laporan. Laporan yang sudah terkirim tidak dapat dihapus.",
+          "Hanya pembuat draf atau Administrator yang dapat menghapus laporan insiden.",
         instance: url.pathname,
       },
       requestId,
     )
   }
 
-  // Hard delete: delete incident_reports and any draft audit events (no retained audit after hard delete per workshop decision)
+  // Hard delete: child records use ON DELETE CASCADE; audit is removed explicitly for
+  // compatibility with existing test/migration environments.
   await env.DB.batch([
     env.DB.prepare("DELETE FROM audit_records WHERE incident_id = ?;").bind(incidentId),
     env.DB.prepare("DELETE FROM incident_reports WHERE id = ?;").bind(incidentId),

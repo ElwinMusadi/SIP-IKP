@@ -26,7 +26,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/lib/use-auth"
 import {
   createDraft,
-  deleteDraft,
+  deleteIncident,
   fetchIncidentById,
   fetchMasterData,
   saveDraft,
@@ -110,6 +110,7 @@ export function IncidentCreatePage() {
     watch,
     getValues,
     reset,
+    setValue,
     setError,
     clearErrors,
     formState: { errors },
@@ -301,7 +302,7 @@ export function IncidentCreatePage() {
     setIsDeleting(true)
     setDeleteErrorMessage(null)
     try {
-      await deleteDraft(currentReport.id, csrfToken ?? undefined)
+      await deleteIncident(currentReport.id, csrfToken ?? undefined)
       void navigate("/laporan")
     } catch (err) {
       setShowDeleteConfirm(false)
@@ -367,14 +368,6 @@ export function IncidentCreatePage() {
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  // SLA Calculation preview
-  const incidentDatetimeVal = watch("incident_datetime")
-  let isOverduePreview = false
-  if (incidentDatetimeVal && !Number.isNaN(Date.parse(incidentDatetimeVal))) {
-    const deadlineMs = new Date(incidentDatetimeVal).getTime() + 48 * 60 * 60 * 1000
-    isOverduePreview = Date.now() > deadlineMs
   }
 
   if (isInitializing) {
@@ -469,18 +462,18 @@ export function IncidentCreatePage() {
 
       {/* Main Form */}
       <form className="flex flex-col gap-5 pb-20" onSubmit={onAttemptSubmit}>
-        <FormSectionPatient errors={errors} masterData={masterData} register={register} />
+        <FormSectionPatient errors={errors} masterData={masterData} register={register} setValue={setValue} watch={watch} />
 
         <FormSectionIncident
           errors={errors}
           masterData={masterData}
           register={register}
+          setValue={setValue}
           watch={watch}
         />
 
         <FormSectionImmediateAction
           errors={errors}
-          isOverdue={isOverduePreview}
           register={register}
           watch={watch}
         />

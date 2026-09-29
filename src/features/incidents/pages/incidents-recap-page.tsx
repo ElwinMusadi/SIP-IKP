@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/shared/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+import { IndonesianDateInput } from "@/components/shared/indonesian-date-input"
 import {
   Table,
   TableBody,
@@ -323,25 +323,21 @@ export function IncidentsRecapPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Field>
                 <FieldLabel htmlFor="f_start_date">Dari Tanggal</FieldLabel>
-                <Input
-                  className="h-10"
+                <IndonesianDateInput
                   id="f_start_date"
-                  onChange={(e) => {
-                    setFilters({ ...filters, startDate: e.target.value })
+                  onChange={(value) => {
+                    setFilters({ ...filters, startDate: value })
                   }}
-                  type="date"
                   value={filters.startDate ?? ""}
                 />
               </Field>
               <Field>
                 <FieldLabel htmlFor="f_end_date">Sampai Tanggal</FieldLabel>
-                <Input
-                  className="h-10"
+                <IndonesianDateInput
                   id="f_end_date"
-                  onChange={(e) => {
-                    setFilters({ ...filters, endDate: e.target.value })
+                  onChange={(value) => {
+                    setFilters({ ...filters, endDate: value })
                   }}
-                  type="date"
                   value={filters.endDate ?? ""}
                 />
               </Field>

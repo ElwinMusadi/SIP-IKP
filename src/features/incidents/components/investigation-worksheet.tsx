@@ -6,6 +6,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import { IndonesianDateInput } from "@/components/shared/indonesian-date-input"
 import type { ActionItem, RecommendationItem, SimpleInvestigation } from "../types/incident"
 
 interface InvestigationWorksheetProps {
@@ -104,14 +105,16 @@ function ItemRow({
         <FieldLabel className="text-xs" htmlFor={`${idPrefix}-${String(index)}-text`}>
           {textLabel}
         </FieldLabel>
-        <Input
-          className="h-10"
+        <Textarea
+          className="min-h-20"
           disabled={!canEdit}
           id={`${idPrefix}-${String(index)}-text`}
           onChange={(event) => {
             onUpdate(index, "text", event.target.value)
           }}
           placeholder={textPlaceholder}
+          required
+          rows={3}
           value={item.text}
         />
       </Field>
@@ -128,6 +131,7 @@ function ItemRow({
               onUpdate(index, "responsible", event.target.value)
             }}
             placeholder="Nama / jabatan"
+            required
             value={item.responsible}
           />
         </Field>
@@ -135,14 +139,13 @@ function ItemRow({
           <FieldLabel className="text-xs" htmlFor={`${idPrefix}-${String(index)}-date`}>
             Target Tanggal
           </FieldLabel>
-          <Input
-            className="h-10"
+          <IndonesianDateInput
             disabled={!canEdit}
             id={`${idPrefix}-${String(index)}-date`}
-            onChange={(event) => {
-              onUpdate(index, "target_date", event.target.value)
+            onChange={(value) => {
+              onUpdate(index, "target_date", value)
             }}
-            type="date"
+            required
             value={item.target_date}
           />
         </Field>
@@ -246,6 +249,26 @@ export function InvestigationWorksheet({
 
     if (startDate && endDate && endDate < startDate) {
       setErrorMessage("Tanggal selesai investigasi tidak boleh mendahului tanggal mulai.")
+      return
+    }
+
+    const incompleteRecommendation = recommendations.findIndex(
+      (item) => !item.text.trim() || !item.responsible.trim() || !item.target_date.trim(),
+    )
+    if (incompleteRecommendation >= 0) {
+      setErrorMessage(
+        `Rekomendasi nomor ${String(incompleteRecommendation + 1)} belum lengkap. Isi rekomendasi, penanggung jawab, dan target tanggal.`,
+      )
+      return
+    }
+
+    const incompleteAction = actions.findIndex(
+      (item) => !item.text.trim() || !item.responsible.trim() || !item.target_date.trim(),
+    )
+    if (incompleteAction >= 0) {
+      setErrorMessage(
+        `Tindakan korektif nomor ${String(incompleteAction + 1)} belum lengkap. Isi tindakan korektif, penanggung jawab, dan target tanggal.`,
+      )
       return
     }
 
@@ -359,14 +382,11 @@ export function InvestigationWorksheet({
               Tanggal Mulai Investigasi{" "}
               <span aria-hidden="true" className="text-destructive">*</span>
             </FieldLabel>
-            <Input
-              className="h-10"
+            <IndonesianDateInput
               disabled={!canEdit}
               id="investigation_start_date"
-              onChange={(e) => {
-                setStartDate(e.target.value)
-              }}
-              type="date"
+              onChange={setStartDate}
+              required
               value={startDate}
             />
           </Field>
@@ -376,14 +396,11 @@ export function InvestigationWorksheet({
               Tanggal Selesai Investigasi{" "}
               <span aria-hidden="true" className="text-destructive">*</span>
             </FieldLabel>
-            <Input
-              className="h-10"
+            <IndonesianDateInput
               disabled={!canEdit}
               id="investigation_end_date"
-              onChange={(e) => {
-                setEndDate(e.target.value)
-              }}
-              type="date"
+              onChange={setEndDate}
+              required
               value={endDate}
             />
             {startDate && endDate && endDate < startDate && (

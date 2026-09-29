@@ -111,3 +111,27 @@ export async function toggleUserActivation(
   })
   return handleResponse<AdminUser>(res)
 }
+
+export async function deleteUser(id: string, csrfToken?: string): Promise<{ deleted: boolean }> {
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: "DELETE",
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+  })
+  return handleResponse<{ deleted: boolean }>(res)
+}
+
+export async function changeUserPassword(
+  id: string,
+  password: string,
+  csrfToken?: string,
+): Promise<{ passwordChanged: boolean; id: string }> {
+  const res = await fetch(`/api/admin/users/${id}/password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    body: JSON.stringify({ password }),
+  })
+  return handleResponse<{ passwordChanged: boolean; id: string }>(res)
+}

@@ -87,6 +87,7 @@ describe("RBAC foundation policy functions", () => {
     expect(canReadReport(otherNakesUser, draftReport)).toBe(false)
     expect(canReadReport(headroomUser, draftReport)).toBe(false)
     expect(canReadReport(pmkpUser, draftReport)).toBe(false)
+    expect(canReadReport(adminUser, draftReport)).toBe(true)
   })
 
   it("allows Nakes IBS to read submitted peer reports from other Nakes IBS", () => {
@@ -102,7 +103,7 @@ describe("RBAC foundation policy functions", () => {
     expect(canReadReport(pmkpUser, submittedReport)).toBe(true)
   })
 
-  it("permits only created_by to edit, delete, and submit draft", () => {
+  it("permits created_by to edit/delete/submit drafts and Administrator to delete any report", () => {
     const draftReport = {
       id: "inc_01",
       status: "DRAFT" as const,
@@ -114,6 +115,8 @@ describe("RBAC foundation policy functions", () => {
     expect(canEditDraft(otherNakesUser, draftReport)).toBe(false)
     expect(canDeleteDraft(nakesUser, draftReport)).toBe(true)
     expect(canDeleteDraft(headroomUser, draftReport)).toBe(false)
+    expect(canDeleteDraft(adminUser, draftReport)).toBe(true)
+    expect(canDeleteDraft(adminUser, { ...draftReport, status: "COMPLETED" })).toBe(true)
     expect(canSubmitReport(nakesUser, draftReport)).toBe(true)
     expect(canSubmitReport(otherNakesUser, draftReport)).toBe(false)
   })

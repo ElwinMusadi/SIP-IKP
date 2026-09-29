@@ -20,10 +20,12 @@ import type { RequestContextData } from "../../_shared/request-context"
 import type { AuthSessionContext } from "../../_shared/session"
 import { onRequestGet as onListGet, onRequestPost as onCreatePost } from "./users/index"
 import {
+  onRequestDelete as onDeleteUser,
   onRequestGet as onGetUser,
   onRequestPatch as onPatchUser,
   onRequestPut as onPutUser,
 } from "./users/[id]"
+import { onRequestPost as onPasswordPost } from "./users/[id]/password"
 
 // ─── Mock actors ─────────────────────────────────────────────────
 
@@ -81,7 +83,7 @@ const pmkpActor: AuthSessionContext = {
 
 // ─── In-memory DB ─────────────────────────────────────────────────
 
-function createInMemoryUserDb() {
+function createInMemoryUserDb(options: { failDeleteWithForeignKey?: boolean } = {}) {
   const usersMap = new Map<string, Record<string, unknown>>([
     [
       "usr_existing_1",
@@ -197,6 +199,23 @@ function createInMemoryUserDb() {
               existing.updated_at = boundParams[1]
             }
             return { meta: { changes: 1 } }
+          }
+          if (sql.includes("UPDATE users SET password_hash")) {
+            const userId = boundParams[boundParams.length - 1] as string
+            const existing = usersMap.get(userId)
+            if (existing) {
+              existing.password_hash = boundParams[0]
+              existing.updated_at = boundParams[1]
+            }
+            return { meta: { changes: existing ? 1 : 0 } }
+          }
+          if (sql.includes("DELETE FROM users WHERE id = ?")) {
+            if (options.failDeleteWithForeignKey) {
+              throw new Error("FOREIGN KEY constraint failed")
+            }
+            const userId = boundParams[0] as string
+            const deleted = usersMap.delete(userId)
+            return { meta: { changes: deleted ? 1 : 0 } }
           }
           // Revoke sessions (revokeAllUserSessions pattern from session.ts)
           if (sql.includes("sessions") && sql.includes("revoked_at") && sql.includes("UPDATE")) {
@@ -661,5 +680,88 @@ describe("GET /api/admin/users/[id] — Get User", () => {
       { id: "does_not_exist" },
     )
     expect(res.status).toBe(404)
+  })
+})
+
+describe("DELETE /api/admin/users/[id] — Delete User", () => {
+  it("admin can delete another user", async () => {
+    const db = createInMemoryUserDb()
+    const res = await callHandler(
+      onDeleteUser,
+      new Request("http://localhost/api/admin/users/usr_existing_1", { method: "DELETE" }),
+      db,
+      makeData(adminActor),
+      { id: "usr_existing_1" },
+    )
+
+    expect(res.status).toBe(200)
+    expect(db._usersMap.has("usr_existing_1")).toBe(false)
+  })
+
+  it("admin cannot delete themselves", async () => {
+    const db = createInMemoryUserDb()
+    const res = await callHandler(
+      onDeleteUser,
+      new Request("http://localhost/api/admin/users/usr_admin_1", { method: "DELETE" }),
+      db,
+      makeData(adminActor),
+      { id: "usr_admin_1" },
+    )
+
+    expect(res.status).toBe(403)
+  })
+
+  it("returns 409 when the user is still referenced by incident history", async () => {
+    const db = createInMemoryUserDb({ failDeleteWithForeignKey: true })
+    const res = await callHandler(
+      onDeleteUser,
+      new Request("http://localhost/api/admin/users/usr_existing_1", { method: "DELETE" }),
+      db,
+      makeData(adminActor),
+      { id: "usr_existing_1" },
+    )
+
+    expect(res.status).toBe(409)
+    const json = await res.json() as { code: string }
+    expect(json.code).toBe("USER_STILL_REFERENCED")
+    expect(db._usersMap.has("usr_existing_1")).toBe(true)
+  })
+})
+
+describe("POST /api/admin/users/[id]/password — Reset Password", () => {
+  it("admin can reset a password and active sessions are revoked", async () => {
+    const db = createInMemoryUserDb()
+    const res = await callHandler(
+      onPasswordPost,
+      new Request("http://localhost/api/admin/users/usr_existing_1/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "NewSecurePassword#2026" }),
+      }),
+      db,
+      makeData(adminActor),
+      { id: "usr_existing_1" },
+    )
+
+    expect(res.status).toBe(200)
+    expect(db._usersMap.get("usr_existing_1")?.password_hash).not.toBe("HASHED")
+    expect(db._revokedSessions.length).toBeGreaterThan(0)
+  })
+
+  it("rejects a password shorter than eight characters", async () => {
+    const db = createInMemoryUserDb()
+    const res = await callHandler(
+      onPasswordPost,
+      new Request("http://localhost/api/admin/users/usr_existing_1/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "short" }),
+      }),
+      db,
+      makeData(adminActor),
+      { id: "usr_existing_1" },
+    )
+
+    expect(res.status).toBe(400)
   })
 })

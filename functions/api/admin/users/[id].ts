@@ -2,9 +2,10 @@
  * GET /api/admin/users/[id] — Get a single user
  * PUT /api/admin/users/[id] — Update user data (fullName, role, profession, unitId)
  * PATCH /api/admin/users/[id] — Toggle activation status
+ * DELETE /api/admin/users/[id] — Delete an unreferenced user
  *
  * RBAC: ADMINISTRATOR only (canManageUsers)
- * Security: CSRF required for PUT/PATCH; authentication required for all
+ * Security: CSRF required for PUT/PATCH/DELETE; authentication required for all
  */
 
 import type { CloudflareEnv } from "../../../../src/types/cloudflare-env"
@@ -306,4 +307,94 @@ export const onRequestPatch: PagesFunction<CloudflareEnv, "id", RequestContextDa
     .first<UserRow>()
 
   return jsonResponse(updated ? safeUserPayload(updated) : { id: userId }, requestId)
+}
+
+export const onRequestDelete: PagesFunction<CloudflareEnv, "id", RequestContextData> = async ({
+  env,
+  data,
+  params,
+  request,
+}) => {
+  const requestId = data.requestId
+  const url = new URL(request.url)
+  const auth = data.auth
+
+  if (!auth) {
+    return problemResponse(
+      {
+        status: 401,
+        code: "AUTHENTICATION_REQUIRED",
+        title: "Otentikasi Diperlukan",
+        detail: "Sesi otentikasi tidak ditemukan atau telah berakhir.",
+        instance: url.pathname,
+      },
+      requestId,
+    )
+  }
+
+  if (!canManageUsers(auth.user)) {
+    return problemResponse(
+      {
+        status: 403,
+        code: "FORBIDDEN",
+        title: "Akses Ditolak",
+        detail: "Manajemen pengguna hanya dapat diakses oleh Administrator.",
+        instance: url.pathname,
+      },
+      requestId,
+    )
+  }
+
+  const userId = typeof params.id === "string" ? params.id : (params.id[0] ?? "")
+  if (userId === auth.user.id) {
+    return problemResponse(
+      {
+        status: 403,
+        code: "SELF_DELETION_FORBIDDEN",
+        title: "Akses Ditolak",
+        detail: "Administrator tidak dapat menghapus akun sendiri.",
+        instance: url.pathname,
+      },
+      requestId,
+    )
+  }
+
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE id = ? LIMIT 1")
+    .bind(userId)
+    .first<{ id: string }>()
+
+  if (!existing) {
+    return problemResponse(
+      {
+        status: 404,
+        code: "USER_NOT_FOUND",
+        title: "Pengguna Tidak Ditemukan",
+        detail: "Pengguna dengan ID yang ditentukan tidak ditemukan.",
+        instance: url.pathname,
+      },
+      requestId,
+    )
+  }
+
+  try {
+    await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId).run()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/foreign key|constraint/i.test(message)) {
+      return problemResponse(
+        {
+          status: 409,
+          code: "USER_STILL_REFERENCED",
+          title: "Pengguna Tidak Dapat Dihapus",
+          detail:
+            "Pengguna masih tercatat pada riwayat laporan atau audit. Nonaktifkan akun untuk mempertahankan integritas riwayat klinis.",
+          instance: url.pathname,
+        },
+        requestId,
+      )
+    }
+    throw error
+  }
+
+  return jsonResponse({ deleted: true, id: userId }, requestId)
 }

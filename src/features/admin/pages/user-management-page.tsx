@@ -6,7 +6,9 @@ import {
   IconEdit,
   IconPlus,
   IconRefresh,
+  IconKey,
   IconSearch,
+  IconTrash,
   IconUserOff,
   IconUsers,
 } from "@tabler/icons-react"
@@ -43,6 +45,8 @@ import { useAuth } from "@/lib/use-auth"
 import { cn } from "@/lib/utils"
 import {
   createUser,
+  changeUserPassword,
+  deleteUser,
   listUsers,
   toggleUserActivation,
   updateUser,
@@ -321,13 +325,18 @@ function UserFormDialog({ user, csrfToken, onSuccess, onClose }: UserFormProps) 
 
 // ─── Main page ────────────────────────────────────────────────────
 export function UserManagementPage() {
-  const { csrfToken } = useAuth()
+  const { user: currentUser, csrfToken } = useAuth()
 
   const [users, setUsers] = useState<AdminUser[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isToggling, setIsToggling] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
+  const [passwordTarget, setPasswordTarget] = useState<AdminUser | null>(null)
+  const [newPassword, setNewPassword] = useState("")
+  const [isAccountActionLoading, setIsAccountActionLoading] = useState(false)
+  const [accountActionError, setAccountActionError] = useState<string | null>(null)
 
   // Filters
   const [search, setSearch] = useState("")
@@ -412,6 +421,40 @@ export function UserManagementPage() {
       setErrorMessage(err instanceof Error ? err.message : "Gagal mengubah status pengguna.")
     } finally {
       setIsToggling(false)
+    }
+  }
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return
+    setIsAccountActionLoading(true)
+    setAccountActionError(null)
+    try {
+      await deleteUser(deleteTarget.id, csrfToken ?? undefined)
+      setUsers((previous) => previous.filter((candidate) => candidate.id !== deleteTarget.id))
+      setFeedback(`Pengguna "${deleteTarget.fullName}" berhasil dihapus.`)
+      setDeleteTarget(null)
+    } catch (error) {
+      setDeleteTarget(null)
+      setErrorMessage(error instanceof Error ? error.message : "Gagal menghapus pengguna.")
+    } finally {
+      setIsAccountActionLoading(false)
+    }
+  }
+
+  const handlePasswordChange = async (event: React.SyntheticEvent) => {
+    event.preventDefault()
+    if (!passwordTarget) return
+    setIsAccountActionLoading(true)
+    setAccountActionError(null)
+    try {
+      await changeUserPassword(passwordTarget.id, newPassword, csrfToken ?? undefined)
+      setFeedback(`Kata sandi "${passwordTarget.fullName}" berhasil diubah.`)
+      setPasswordTarget(null)
+      setNewPassword("")
+    } catch (error) {
+      setAccountActionError(error instanceof Error ? error.message : "Gagal mengubah kata sandi.")
+    } finally {
+      setIsAccountActionLoading(false)
     }
   }
 
@@ -602,6 +645,16 @@ export function UserManagementPage() {
                             <IconEdit data-icon="inline-start" />
                             Edit
                           </Button>
+                          <Button
+                            disabled={u.id === currentUser?.id}
+                            onClick={() => { setAccountActionError(null); setPasswordTarget(u) }}
+                            size="xs"
+                            title={u.id === currentUser?.id ? "Tidak dapat mengubah kata sandi akun sendiri" : undefined}
+                            variant="outline"
+                          >
+                            <IconKey data-icon="inline-start" />
+                            Sandi
+                          </Button>
                           {u.isActive ? (
                             <Button
                               className="text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -626,6 +679,17 @@ export function UserManagementPage() {
                               Aktifkan
                             </Button>
                           )}
+                          <Button
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={u.id === currentUser?.id}
+                            onClick={() => { setAccountActionError(null); setDeleteTarget(u) }}
+                            size="xs"
+                            title={u.id === currentUser?.id ? "Tidak dapat menghapus akun sendiri" : undefined}
+                            variant="outline"
+                          >
+                            <IconTrash aria-hidden="true" />
+                            <span className="sr-only">Hapus {u.fullName}</span>
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -689,6 +753,14 @@ export function UserManagementPage() {
                       </Button>
                     )}
                   </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button disabled={u.id === currentUser?.id} onClick={() => { setAccountActionError(null); setPasswordTarget(u) }} size="sm" variant="outline">
+                      <IconKey data-icon="inline-start" /> Ubah Sandi
+                    </Button>
+                    <Button className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={u.id === currentUser?.id} onClick={() => { setAccountActionError(null); setDeleteTarget(u) }} size="sm" variant="outline">
+                      <IconTrash data-icon="inline-start" /> Hapus
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -746,6 +818,39 @@ export function UserManagementPage() {
         }
         tone={isDeactivate ? "destructive" : "default"}
       />
+      <ConfirmDialog
+        busy={isAccountActionLoading}
+        cancelLabel="Batal"
+        confirmLabel="Hapus Pengguna"
+        description={`Akun "${deleteTarget?.fullName ?? ""}" akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.`}
+        onConfirm={() => { void handleDeleteUser() }}
+        onOpenChange={(open) => { if (!open && !isAccountActionLoading) setDeleteTarget(null) }}
+        open={Boolean(deleteTarget)}
+        title="Hapus pengguna?"
+        tone="destructive"
+      />
+      <Dialog onOpenChange={(open) => { if (!open && !isAccountActionLoading) { setPasswordTarget(null); setNewPassword("") } }} open={Boolean(passwordTarget)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ubah Kata Sandi</DialogTitle>
+            <DialogDescription>Tetapkan kata sandi baru untuk {passwordTarget?.fullName}.</DialogDescription>
+          </DialogHeader>
+          <form className="flex flex-col gap-4" onSubmit={(event) => { void handlePasswordChange(event) }}>
+            {accountActionError && <p className="text-xs font-medium text-destructive" role="alert">{accountActionError}</p>}
+            <Field>
+              <FieldLabel htmlFor="reset-password">Kata Sandi Baru</FieldLabel>
+              <Input autoComplete="new-password" id="reset-password" minLength={8} onChange={(event) => { setNewPassword(event.target.value) }} required type="password" value={newPassword} />
+              <FieldDescription>Minimal 8 karakter.</FieldDescription>
+            </Field>
+            <DialogFooter>
+              <Button disabled={isAccountActionLoading} onClick={() => { setPasswordTarget(null); setNewPassword("") }} type="button" variant="ghost">Batal</Button>
+              <Button disabled={isAccountActionLoading || newPassword.length < 8} type="submit">
+                {isAccountActionLoading && <Spinner data-icon="inline-start" />} Simpan Kata Sandi
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

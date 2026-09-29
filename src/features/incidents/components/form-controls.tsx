@@ -1,12 +1,13 @@
 import type { ReactNode } from "react"
 import { IconChevronDown } from "@tabler/icons-react"
-import type { Path, UseFormRegister } from "react-hook-form"
+import type { Path, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form"
 
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import type { IncidentFormData } from "../schemas/incident-form-schema"
 import { cn } from "@/lib/utils"
+import { IndonesianDateInput } from "@/components/shared/indonesian-date-input"
 
 type FormFieldName = Path<IncidentFormData>
 
@@ -19,6 +20,35 @@ interface BaseFieldProps {
   disabled?: boolean
   register: UseFormRegister<IncidentFormData>
   className?: string | undefined
+}
+
+interface DateFieldProps extends Omit<BaseFieldProps, "register"> {
+  mode?: "date" | "datetime"
+  setValue: UseFormSetValue<IncidentFormData>
+  watch: UseFormWatch<IncidentFormData>
+}
+
+export function DateField({ name, label, required, error, disabled, mode = "date", setValue, watch, className }: DateFieldProps) {
+  const value = watch(name)
+  return (
+    <Field className={className} data-invalid={error ? true : undefined}>
+      <FieldLabel htmlFor={name}>
+        {label}
+        {required && <span aria-hidden="true" className="text-destructive">*</span>}
+      </FieldLabel>
+      <IndonesianDateInput
+        disabled={disabled}
+        id={name}
+        mode={mode}
+        onChange={(nextValue) => {
+          setValue(name, nextValue, { shouldDirty: true, shouldValidate: true })
+        }}
+        required={required}
+        value={typeof value === "string" ? value : ""}
+      />
+      {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
+    </Field>
+  )
 }
 
 const controlHeight = "h-10"
