@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   IconArrowLeft,
+  IconDownload,
   IconHeartbeat,
+  IconLoader2,
   IconPrinter,
   IconRefresh,
   IconShieldLock,
@@ -19,69 +21,17 @@ import type {
   RecommendationItem,
   SimpleInvestigation,
 } from "../types/incident"
-
-function parseTableRows<T>(raw?: string | T[]): T[] {
-  if (Array.isArray(raw)) {
-    return raw
-  }
-  if (typeof raw === "string") {
-    try {
-      const parsed: unknown = JSON.parse(raw || "[]")
-      if (Array.isArray(parsed)) {
-        return parsed as T[]
-      }
-    } catch {
-      // ignore
-    }
-  }
-  return []
-}
-
-function formatStatusText(status: string): string {
-  switch (status) {
-    case "DRAFT":
-      return "DRAF — BELUM MENJADI LAPORAN RESMI"
-    case "SUBMITTED":
-      return "TERKIRIM (MENUNGGU VERIFIKASI KEPALA RUANGAN)"
-    case "REVISION_REQUIRED":
-      return "PERLU PERBAIKAN / REVISI DARI PELAPOR"
-    case "UNDER_REVIEW":
-      return "SEDANG DITINJAU OLEH KEPALA RUANGAN IBS"
-    case "SIMPLE_INVESTIGATION":
-      return "DALAM INVESTIGASI SEDERHANA TINGKAT UNIT"
-    case "PMKP_REVIEW":
-      return "DALAM TINJAUAN MUTU KOMITE PMKP"
-    case "COMPLETED_BY_UNIT":
-      return "SELESAI DI TINGKAT UNIT (COMPLETED_BY_UNIT)"
-    case "COMPLETED":
-      return "SELESAI (KASUS DITUTUP RESMI)"
-    default:
-      return status
-  }
-}
-
-function formatAuditLabel(type: string): string {
-  switch (type) {
-    case "DRAFT_CREATED":
-      return "Draf Dibuat"
-    case "REPORT_SUBMITTED":
-      return "Laporan Resmi Dikirimkan"
-    case "REVISION_REQUIRED":
-      return "Permintaan Perbaikan / Revisi"
-    case "SIMPLE_INVESTIGATION_COMPLETED":
-      return "Investigasi Sederhana Diselesaikan"
-    case "REPORT_COMPLETED":
-      return "Laporan Selesai (Kasus Ditutup)"
-    case "EMERGENCY_CORRECTION":
-      return "Koreksi Darurat Dilakukan"
-    default:
-      return type
-  }
-}
+import { buildIncidentPdfFilename } from "../utils/pdf-filename"
+import {
+  formatPrintAuditLabel,
+  formatPrintStatus,
+  parsePrintTableRows,
+} from "../utils/print-formatters"
 
 export function IncidentPrintPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const pdfGenerationLockRef = useRef(false)
 
   const [report, setReport] = useState<IncidentReport | null>(null)
   const [investigation, setInvestigation] = useState<SimpleInvestigation | null>(null)
@@ -89,6 +39,8 @@ export function IncidentPrintPage() {
   const [printedAt, setPrintedAt] = useState<string>("")
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   const loadPrintData = async () => {
     if (!id) return
@@ -104,6 +56,44 @@ export function IncidentPrintPage() {
       setErrorMessage(err instanceof Error ? err.message : "Gagal memuat dokumen cetak.")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const downloadPdf = async () => {
+    if (!report || pdfGenerationLockRef.current) return
+
+    pdfGenerationLockRef.current = true
+    setIsGeneratingPdf(true)
+    setPdfErrorMessage(null)
+
+    try {
+      const [{ pdf }, { IncidentPdfDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("../components/incident-pdf-document"),
+      ])
+      const blob = await pdf(
+        <IncidentPdfDocument
+          auditRecords={auditRecords}
+          investigation={investigation}
+          printedAt={printedAt}
+          report={report}
+        />,
+      ).toBlob()
+      const objectUrl = URL.createObjectURL(blob)
+      const downloadLink = document.createElement("a")
+      downloadLink.href = objectUrl
+      downloadLink.download = buildIncidentPdfFilename(report.report_number, id)
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+      window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl)
+      }, 1_000)
+    } catch {
+      setPdfErrorMessage("PDF gagal dibuat. Muat ulang halaman lalu coba kembali.")
+    } finally {
+      pdfGenerationLockRef.current = false
+      setIsGeneratingPdf(false)
     }
   }
 
@@ -148,7 +138,9 @@ export function IncidentPrintPage() {
     return (
       <div className="mx-auto flex max-w-2xl flex-col items-center justify-center gap-4 p-8 no-print">
         <ErrorState
-          message={errorMessage ?? "Laporan insiden tidak ditemukan atau Anda tidak memiliki akses."}
+          message={
+            errorMessage ?? "Laporan insiden tidak ditemukan atau Anda tidak memiliki akses."
+          }
           onRetry={() => void loadPrintData()}
           retryLabel="Coba Lagi"
           title="Gagal membuka dokumen cetak"
@@ -161,8 +153,11 @@ export function IncidentPrintPage() {
   }
 
   const isDraft = report.status === "DRAFT"
-  const recommendations = parseTableRows<RecommendationItem>(investigation?.recommendations)
-  const actions = parseTableRows<ActionItem>(investigation?.actions)
+  const recommendations = parsePrintTableRows<RecommendationItem>(
+    investigation?.recommendations,
+    "recommendations",
+  )
+  const actions = parsePrintTableRows<ActionItem>(investigation?.actions, "actions")
 
   const printTimeFormatted = printedAt
     ? new Date(printedAt).toLocaleString("id-ID") + " WITA"
@@ -187,19 +182,28 @@ export function IncidentPrintPage() {
               Pratinjau Cetak Formulir IKP (A4)
             </h1>
             <p className="text-[11px] text-muted-foreground">
-              Gunakan cetak peramban atau "Save as PDF" untuk dokumen akreditasi resmi.
+              Unduh PDF langsung atau gunakan cetak peramban untuk dokumen resmi.
             </p>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 pl-10 sm:pl-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 pl-10 sm:justify-end sm:pl-0">
+          <Button onClick={() => void loadPrintData()} size="sm" variant="outline">
+            <IconRefresh data-icon="inline-start" />
+            <span className="hidden sm:inline">Segarkan</span>
+          </Button>
           <Button
-            onClick={() => void loadPrintData()}
+            disabled={isGeneratingPdf}
+            onClick={() => void downloadPdf()}
             size="sm"
             variant="outline"
           >
-            <IconRefresh data-icon="inline-start" />
-            <span className="hidden sm:inline">Segarkan</span>
+            {isGeneratingPdf ? (
+              <IconLoader2 className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <IconDownload data-icon="inline-start" />
+            )}
+            {isGeneratingPdf ? "Membuat PDF…" : "Download PDF"}
           </Button>
           <Button
             className="font-medium"
@@ -211,6 +215,11 @@ export function IncidentPrintPage() {
             <IconPrinter data-icon="inline-start" />
             Cetak Dokumen
           </Button>
+          {pdfErrorMessage && (
+            <p className="w-full text-xs font-medium text-destructive" role="alert">
+              {pdfErrorMessage}
+            </p>
+          )}
         </div>
       </div>
 
@@ -270,7 +279,7 @@ export function IncidentPrintPage() {
           <div>
             <span className="text-[10px] text-slate-600 print:text-black">Status Dokumen:</span>
             <p className="font-bold text-slate-900 print:text-black">
-              {formatStatusText(report.status)}
+              {formatPrintStatus(report.status)}
             </p>
           </div>
           <div>
@@ -472,7 +481,7 @@ export function IncidentPrintPage() {
                 </td>
                 <td className="p-1.5">{report.action_taken_by || "-"}</td>
               </tr>
-              <tr className="border-b border-slate-300 print:border-black">
+              <tr>
                 <td className="border-r border-slate-300 bg-slate-50 p-1.5 font-medium print:border-black print:bg-white">
                   13. Kejadian Serupa Pernah Terjadi?
                 </td>
@@ -481,22 +490,6 @@ export function IncidentPrintPage() {
                   {report.similar_incident_details
                     ? `(Detail: ${report.similar_incident_details})`
                     : ""}
-                </td>
-              </tr>
-              <tr>
-                <td className="border-r border-slate-300 bg-slate-50 p-1.5 font-medium print:border-black print:bg-white">
-                  14. Kepatuhan Waktu Pelaporan (SLA 48 Jam)
-                </td>
-                <td className="p-1.5 font-medium">
-                  {report.is_overdue_sla === 1 ? (
-                    <span className="font-bold text-rose-700 print:text-black">
-                      TERLAMBAT (&gt; 48 Jam) &mdash; Alasan: {report.overdue_reason || "-"}
-                    </span>
-                  ) : (
-                    <span className="font-bold text-teal-800 print:text-black">
-                      TEPAT WAKTU (&le; 48 Jam)
-                    </span>
-                  )}
                 </td>
               </tr>
             </tbody>
@@ -778,7 +771,7 @@ export function IncidentPrintPage() {
                       {new Date(rec.occurredAt).toLocaleString("id-ID")}
                     </td>
                     <td className="border-r border-slate-200 p-1 font-semibold print:border-black">
-                      {formatAuditLabel(rec.eventType)}
+                      {formatPrintAuditLabel(rec.eventType)}
                     </td>
                     <td className="border-r border-slate-200 p-1 print:border-black">
                       {rec.actorName} ({rec.actorRole})
