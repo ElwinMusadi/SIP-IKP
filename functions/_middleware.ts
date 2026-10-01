@@ -7,7 +7,7 @@ import { CSRF_HEADER_NAME, parseSessionCookie, validateSession } from "./_shared
 
 const securityHeaders: Record<string, string> = {
   "Content-Security-Policy":
-    "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' data:; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'",
   "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Content-Type-Options": "nosniff",
