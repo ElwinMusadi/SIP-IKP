@@ -89,8 +89,15 @@ export function IncidentPrintPage() {
       window.setTimeout(() => {
         URL.revokeObjectURL(objectUrl)
       }, 1_000)
-    } catch {
-      setPdfErrorMessage("PDF gagal dibuat. Muat ulang halaman lalu coba kembali.")
+    } catch (error) {
+      const pdfError =
+        error instanceof Error
+          ? { name: error.name, message: error.message }
+          : { name: "UnknownError", message: "Unknown PDF generation error" }
+      console.error("Incident PDF generation failed", pdfError)
+      setPdfErrorMessage(
+        "PDF gagal dibuat di perangkat ini. Segarkan lalu coba unduh kembali, atau gunakan Cetak Dokumen.",
+      )
     } finally {
       pdfGenerationLockRef.current = false
       setIsGeneratingPdf(false)
@@ -166,7 +173,7 @@ export function IncidentPrintPage() {
   return (
     <div className="min-h-screen bg-muted/60 py-6 text-slate-900 print:bg-white print:p-0 print:text-black">
       {/* 1. Top Non-Printed Action Bar */}
-      <div className="no-print mx-auto mb-6 flex max-w-4xl flex-col gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+      <div className="no-print mx-auto mb-6 grid max-w-4xl gap-3 rounded-xl border bg-card px-4 py-3.5 shadow-sm sm:px-6 sm:py-4 lg:grid-cols-[minmax(18rem,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             aria-label="Kembali"
@@ -177,8 +184,8 @@ export function IncidentPrintPage() {
           >
             <IconArrowLeft className="size-4" />
           </Button>
-          <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold text-foreground">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-sm font-semibold text-foreground">
               Pratinjau Cetak Formulir IKP (A4)
             </h1>
             <p className="text-[11px] text-muted-foreground">
@@ -187,7 +194,7 @@ export function IncidentPrintPage() {
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center gap-2 pl-10 sm:justify-end sm:pl-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 pl-10 sm:pl-0 lg:justify-end">
           <Button onClick={() => void loadPrintData()} size="sm" variant="outline">
             <IconRefresh data-icon="inline-start" />
             <span className="hidden sm:inline">Segarkan</span>

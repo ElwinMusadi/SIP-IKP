@@ -201,6 +201,10 @@ function dateOnly(valueToFormat: string | null | undefined): string {
   return valueToFormat ? new Date(valueToFormat).toLocaleDateString("id-ID") : "-"
 }
 
+function pdfPageNumber(valueToFormat: unknown): string {
+  return typeof valueToFormat === "number" ? valueToFormat.toString() : "-"
+}
+
 function DetailRow({
   label,
   children,
@@ -524,7 +528,7 @@ export function IncidentPdfDocument({
           <Text>SIP-IKP • DOKUMEN RAHASIA</Text>
           <Text
             render={({ pageNumber, totalPages }) =>
-              `Halaman ${pageNumber.toString()} dari ${totalPages.toString()}`
+              `Halaman ${pdfPageNumber(pageNumber)} dari ${pdfPageNumber(totalPages)}`
             }
           />
         </View>
