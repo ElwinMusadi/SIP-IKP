@@ -37,3 +37,4 @@ test-results/
 *.local
 .tmp/
 tmp/
+docs/UsersDev.md
