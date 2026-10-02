@@ -4,7 +4,21 @@
 
 This document defines the canonical workflow state machine, transition contracts, actor responsibilities, preconditions, and audit events for the **Sistem Informasi Pelaporan Insiden Keselamatan Pasien (IKP) IBS RSUD Prof. Dr. W. Z. Johannes Kupang**.
 
-**GOVERNANCE STATUS: PROVISIONAL DOMAIN SPECIFICATION — CONDITIONAL PATHS ARE DISABLED PENDING POLICY.**
+**GOVERNANCE STATUS: HISTORICAL PROVISIONAL SPECIFICATION. `FINAL-WORKFLOW.md` is the current implementation authority. The Phase 16 decision-step delta below supersedes conflicting provisional transitions in this document.**
+
+### Phase 16 Current Workflow Delta
+
+For an incident in `UNDER_REVIEW`, assigning `BIRU` or `HIJAU` stores the grade but deliberately retains `UNDER_REVIEW`. The Kepala Ruangan then makes an explicit, server-enforced decision:
+
+```text
+Risk Grading BIRU/HIJAU
+        ↓
+Simple Investigation?
+├── YES → SIMPLE_INVESTIGATION → COMPLETED_BY_UNIT
+└── NO  → COMPLETED_BY_UNIT
+```
+
+The NO path creates no `simple_investigations` row and emits only `REPORT_COMPLETED`. The YES transition creates the 1:1 investigation record but emits no start event because the approved minimal audit model has no start event. Both commands require the current `If-Match` / `row_version`. KUNING/MERAH continue directly to `PMKP_REVIEW` with mandatory mitigation notes. No status, table, column, migration, or audit type is added.
 
 This specification supersedes all informal narrative descriptions. Every lifecycle transition in the application must be executed through an explicit named domain command conforming to this matrix. Generic status updates (`PATCH status=...`) are strictly prohibited.
 
@@ -29,7 +43,7 @@ This specification supersedes all informal narrative descriptions. Every lifecyc
 
 ## 3. Milestones Evaluated but NOT Persisted as Standalone States
 
-- **`RISK_GRADED`:** Risk grading is an **atomic command event** (`ASSIGN_RISK_GRADE`), not a durable queue. The grade immediately routes the incident to `SIMPLE_INVESTIGATION` or `ESCALATED_TO_PMKP`. Persisting a separate `RISK_GRADED` state introduces an actionable limbo where no one owns the next step (`ADR-002`).
+- **`RISK_GRADED`:** Risk grading remains an attribute, not a durable state. BIRU/HIJAU stays in owned status `UNDER_REVIEW` until the explicit investigation decision; KUNING/MERAH routes to `PMKP_REVIEW`.
 - **`RESUBMITTED`:** Resubmission is a version boundary event (`RESUBMIT_INVESTIGATION`). The report returns to `SUBMITTED_TO_PMKP` with an incremented revision number.
 - **`ON_HOLD` / `RCA_IN_PROGRESS`:** Rejected / Deferred. The Blueprint places interactive RCA post-MVP (`docs/AI-Product-Blueprint-*.md:89-90`). No intermediate RCA state may be invented until stakeholders define the RCA lifecycle.
 

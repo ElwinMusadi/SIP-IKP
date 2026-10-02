@@ -31,6 +31,37 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     )
   }
 
+  // If-Match is mandatory for concurrency safety
+  const ifMatchHeader = request.headers.get("If-Match")
+  if (!ifMatchHeader) {
+    return problemResponse(
+      {
+        status: 428,
+        code: "PRECONDITION_REQUIRED",
+        title: "Header If-Match Wajib",
+        detail:
+          "Header If-Match wajib disertakan untuk mencegah pembaruan bersamaan yang tidak terdeteksi.",
+        instance: url.pathname,
+      },
+      requestId,
+    )
+  }
+
+  const versionMatch = /^"W\/(\d+)"$/.exec(ifMatchHeader)
+  if (!versionMatch?.[1]) {
+    return problemResponse(
+      {
+        status: 400,
+        code: "INVALID_IF_MATCH",
+        title: "Format If-Match Tidak Valid",
+        detail: 'Header If-Match harus dalam format "W/<version>", misalnya "W/3".',
+        instance: url.pathname,
+      },
+      requestId,
+    )
+  }
+  const expectedVersion = Number.parseInt(versionMatch[1], 10)
+
   const incidentId = typeof params.id === "string" ? params.id : (params.id[0] ?? "")
   const report = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
     .bind(incidentId)
@@ -132,37 +163,49 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
 
   const nowIso = new Date().toISOString()
   const nextVersion = report.row_version + 1
+
+  // BIRU/HIJAU: stay UNDER_REVIEW so Kepala Ruangan can choose to start or skip investigation.
+  // KUNING/MERAH: move to PMKP_REVIEW immediately.
   const nextStatus =
-    riskGrade === "BIRU" || riskGrade === "HIJAU" ? "SIMPLE_INVESTIGATION" : "PMKP_REVIEW"
+    riskGrade === "BIRU" || riskGrade === "HIJAU" ? "UNDER_REVIEW" : "PMKP_REVIEW"
 
-  const statements: D1PreparedStatement[] = []
-
-  // 1. Update incident report status and risk grade
-  statements.push(
-    env.DB.prepare(
-      `UPDATE incident_reports SET
-        status = ?,
-        risk_grade = ?,
-        risk_graded_at = ?,
-        high_risk_mitigation_notes = ?,
-        row_version = ?,
-        updated_at = ?
-      WHERE id = ?`,
-    ).bind(nextStatus, riskGrade, nowIso, mitigationNotes || null, nextVersion, nowIso, incidentId),
+  // Atomic guarded update: WHERE id=? AND row_version=? AND status='UNDER_REVIEW'
+  // If row_version has changed since the client last read, changes=0 → 412.
+  const updateResult = await env.DB.prepare(
+    `UPDATE incident_reports SET
+      status = ?,
+      risk_grade = ?,
+      risk_graded_at = ?,
+      high_risk_mitigation_notes = ?,
+      row_version = ?,
+      updated_at = ?
+    WHERE id = ? AND row_version = ? AND status = 'UNDER_REVIEW'`,
   )
+    .bind(
+      nextStatus,
+      riskGrade,
+      nowIso,
+      mitigationNotes || null,
+      nextVersion,
+      nowIso,
+      incidentId,
+      expectedVersion,
+    )
+    .run()
 
-  // 2. If BIRU/HIJAU, initialize simple_investigations row if not exists
-  if (nextStatus === "SIMPLE_INVESTIGATION") {
-    statements.push(
-      env.DB.prepare(
-        `INSERT OR IGNORE INTO simple_investigations (
-          id, incident_id, recommendations, actions, created_at, updated_at
-        ) VALUES (?, ?, '[]', '[]', ?, ?)`,
-      ).bind(crypto.randomUUID(), incidentId, nowIso, nowIso),
+  if (!updateResult.meta.changes || updateResult.meta.changes === 0) {
+    return problemResponse(
+      {
+        status: 412,
+        code: "PRECONDITION_FAILED",
+        title: "Konflik Versi Data (Concurrency Error)",
+        detail:
+          "Data telah diubah oleh sesi lain atau status tidak lagi UNDER_REVIEW. Muat ulang halaman untuk mendapatkan versi terbaru.",
+        instance: url.pathname,
+      },
+      requestId,
     )
   }
-
-  await env.DB.batch(statements)
 
   const updatedReport = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
     .bind(incidentId)

@@ -2,7 +2,17 @@
 
 ## 1. Authority and classification
 
-This document is the **proposed canonical workflow authority** for implementation design. It translates Product Blueprint FR-02 through FR-06 and BR-03 through BR-09 into explicit commands and transitions.
+This document preserves the early proposed workflow analysis. **`FINAL-WORKFLOW.md` is the current implementation authority.** Phase 16 supersedes the provisional BIRU/HIJAU transitions below with this active decision point:
+
+```text
+UNDER_REVIEW + BIRU/HIJAU
+        ↓
+Simple Investigation?
+├── YES → SIMPLE_INVESTIGATION → COMPLETED_BY_UNIT
+└── NO  → COMPLETED_BY_UNIT
+```
+
+The NO path creates no investigation record and emits `REPORT_COMPLETED` only. The YES transition creates the investigation record and uses the existing completion flow. Both actions require the current `If-Match` / `row_version`. KUNING/MERAH remains on the PMKP path. No schema or audit taxonomy change is introduced.
 
 - **Existing requirement:** reporters submit incidents; Kepala Ruangan receives and grades them; BIRU/HIJAU require simple investigation; KUNING/MERAH require initial mitigation and escalation; PMKP may request revision, regrade, and complete; very minor KNC may be completed by unit.
 - **Architectural inference:** a single persisted `status` should represent responsibility and lifecycle, while risk grade, review decision, and RCA requirement remain separate attributes/events.

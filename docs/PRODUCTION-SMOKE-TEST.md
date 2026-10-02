@@ -57,9 +57,15 @@ All smoke test data entered during verification MUST use explicit test markers:
 - [ ] **3.2 Revision Loop Test (Optional):** Click _"Minta Perbaikan / Revisi ke Pelapor"_. Enter reason.
   - _Expected:_ Status advances to `REVISION_REQUIRED`. Log in as creator; verify creator can edit and resubmit.
 - [ ] **3.3 Manual Risk Grading (BIRU / HIJAU):** In `UNDER_REVIEW`, select `BIRU` or `HIJAU`. Click _"Tetapkan Pita Risiko"_.
-  - _Expected:_ Status advances to `SIMPLE_INVESTIGATION`. Lembar Kerja Investigasi Sederhana appears below.
-- [ ] **3.4 Investigation Worksheet:** Fill direct cause, root cause, start/end dates (`end >= start`), 1 recommendation, 1 action plan. Click _"Selesaikan Investigasi & Tutup di Tingkat Unit"_.
+  - _Expected:_ Grade is stored, status remains `UNDER_REVIEW`, no investigation record exists, and the two follow-up choices appear.
+- [ ] **3.4 Start Investigation Path:** Click _"Lanjut ke Investigasi Sederhana"_.
+  - _Expected:_ Status advances to `SIMPLE_INVESTIGATION`. Lembar Kerja Investigasi Sederhana appears below. Refreshing retains this server state.
+- [ ] **3.5 Investigation Worksheet:** Fill direct cause, root cause, start/end dates (`end >= start`), 1 recommendation, 1 action plan. Click _"Selesaikan Investigasi & Tutup di Tingkat Unit"_.
   - _Expected:_ Status advances to `COMPLETED_BY_UNIT` (terminal). Case is permanently frozen.
+- [ ] **3.6 Completion Without Investigation:** Repeat with a new BIRU/HIJAU report. Choose _"Selesaikan Tanpa Investigasi"_ and confirm.
+  - _Expected:_ Status advances directly from `UNDER_REVIEW` to `COMPLETED_BY_UNIT`; no investigation worksheet/record is created; audit contains `REPORT_COMPLETED` and no Simple Investigation completion event.
+- [ ] **3.7 Concurrency & RBAC:** Retry either decision using the old ETag, then try it as Nakes and as a Kepala Ruangan outside the report unit.
+  - _Expected:_ Stale request returns `412 Precondition Failed`; unauthorized requests are rejected; the report and audit trail are unchanged.
 
 ---
 

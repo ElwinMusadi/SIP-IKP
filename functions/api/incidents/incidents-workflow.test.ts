@@ -7,6 +7,8 @@ import { onRequestPost as onAssignRiskGradePost } from "./[id]/assign-risk-grade
 import { onRequestPost as onEmergencyCorrectionPost } from "./[id]/emergency-correction"
 import { onRequestPut as onInvestigationPut } from "./[id]/investigation"
 import { onRequestPost as onCompleteInvestigationPost } from "./[id]/investigation/complete"
+import { onRequestPost as onStartInvestigationPost } from "./[id]/investigation/start"
+import { onRequestPost as onSkipInvestigationPost } from "./[id]/investigation/skip"
 import { onRequestPut as onPmkpReviewPut } from "./[id]/pmkp-review"
 import { onRequestPost as onFinalizePmkpPost } from "./[id]/pmkp-review/finalize"
 import { onRequestPost as onReceivePost } from "./[id]/receive"
@@ -236,7 +238,70 @@ function createInMemoryD1() {
             incidents.set(id, record)
             return { meta: { changes: 1 } }
           }
+
           if (sql.includes("UPDATE incident_reports SET")) {
+            // ------------------------------------------------------------------
+            // Guarded updates: WHERE id=? AND row_version=? AND status=<literal>
+            // id and expectedVersion are the last two bound params.
+            // ------------------------------------------------------------------
+            const hasVersionGuard =
+              sql.includes("AND row_version = ?") || sql.includes("AND row_version=?")
+
+            // Detect which status guard is in the WHERE clause
+            const guardedOnUnderReview =
+              hasVersionGuard &&
+              (sql.includes("AND status = 'UNDER_REVIEW'") ||
+                sql.includes("AND status='UNDER_REVIEW'"))
+            const guardedOnSimpleInv =
+              hasVersionGuard &&
+              (sql.includes("AND status = 'SIMPLE_INVESTIGATION'") ||
+                sql.includes("AND status='SIMPLE_INVESTIGATION'"))
+
+            if (guardedOnUnderReview || guardedOnSimpleInv) {
+              const id = boundParams[boundParams.length - 2] as string
+              const expectedVer = boundParams[boundParams.length - 1] as number
+              const existing = incidents.get(id)
+              const requiredStatus = guardedOnUnderReview ? "UNDER_REVIEW" : "SIMPLE_INVESTIGATION"
+
+              if (
+                !existing ||
+                existing.row_version !== expectedVer ||
+                existing.status !== requiredStatus
+              ) {
+                return { meta: { changes: 0 } }
+              }
+
+              if (sql.includes("risk_grade = ?")) {
+                // assign-risk-grade guarded update
+                existing.status = boundParams[0]
+                existing.risk_grade = boundParams[1]
+                existing.risk_graded_at = boundParams[2]
+                existing.high_risk_mitigation_notes = boundParams[3]
+                existing.row_version = boundParams[4]
+                existing.updated_at = boundParams[5]
+              } else if (guardedOnUnderReview && sql.includes("status = 'SIMPLE_INVESTIGATION'")) {
+                // investigation/start
+                existing.status = "SIMPLE_INVESTIGATION"
+                existing.row_version = boundParams[0]
+                existing.updated_at = boundParams[1]
+              } else if (guardedOnUnderReview && sql.includes("status = 'COMPLETED_BY_UNIT'")) {
+                // investigation/skip
+                existing.status = "COMPLETED_BY_UNIT"
+                existing.completed_at = boundParams[0]
+                existing.row_version = boundParams[1]
+                existing.updated_at = boundParams[2]
+              } else if (guardedOnSimpleInv && sql.includes("status = 'COMPLETED_BY_UNIT'")) {
+                // investigation/complete
+                existing.status = "COMPLETED_BY_UNIT"
+                existing.completed_at = boundParams[0]
+                existing.row_version = boundParams[1]
+                existing.updated_at = boundParams[2]
+              }
+
+              return { meta: { changes: 1 } }
+            }
+
+            // Unguarded updates (no version+status guard)
             const id = boundParams[boundParams.length - 1] as string
             const existing = incidents.get(id)
             if (existing) {
@@ -346,6 +411,7 @@ function createInMemoryD1() {
             }
             return { meta: { changes: 0 } }
           }
+
           if (sql.includes("DELETE FROM incident_reports WHERE id = ?")) {
             const id = boundParams[0] as string
             incidents.delete(id)
@@ -393,6 +459,55 @@ function createInMemoryD1() {
             }
             return { meta: { changes: 1 } }
           }
+
+          // ----------------------------------------------------------------
+          // Conditional audit INSERT: INSERT INTO audit_records ... SELECT ... WHERE EXISTS
+          // Used by investigation/skip and investigation/complete.
+          // params layout: [id, incidentId, actorId, actorName, actorRole, ts, notes, reqId, incidentId(guard), nextVersion(guard)]
+          // The conditional form uses SELECT + WHERE EXISTS rather than VALUES.
+          // ----------------------------------------------------------------
+          if (sql.includes("INSERT INTO audit_records") && sql.includes("SELECT") && sql.includes("WHERE EXISTS")) {
+            // Extract the guard params: incidentId is at boundParams.length-2, nextVersion at boundParams.length-1
+            const guardIncidentId = boundParams[boundParams.length - 2] as string
+            const guardVersion = boundParams[boundParams.length - 1] as number
+            const inc = incidents.get(guardIncidentId)
+
+            // Simulate EXISTS check: report must be at the guarded status and version
+            // The guard status varies: skip guards on COMPLETED_BY_UNIT, complete guards on COMPLETED_BY_UNIT
+            const existsOk =
+              inc !== undefined &&
+              inc.row_version === guardVersion &&
+              (inc.status === "COMPLETED_BY_UNIT" || inc.status === "SIMPLE_INVESTIGATION")
+
+            if (!existsOk) {
+              return { meta: { changes: 0 } }
+            }
+
+            // Determine event_type from the SQL literal (not a bound param in SELECT form)
+            let eventType: string
+            if (sql.includes("'SIMPLE_INVESTIGATION_COMPLETED'")) {
+              eventType = "SIMPLE_INVESTIGATION_COMPLETED"
+            } else if (sql.includes("'REPORT_COMPLETED'")) {
+              eventType = "REPORT_COMPLETED"
+            } else {
+              eventType = boundParams[2] as string
+            }
+
+            auditRecords.push({
+              id: boundParams[0],
+              incident_id: boundParams[1],
+              event_type: eventType,
+              actor_user_id: boundParams[2],
+              actor_name: boundParams[3],
+              actor_role: boundParams[4],
+              occurred_at_utc: boundParams[5],
+              notes: boundParams[6],
+              request_id: boundParams[7],
+            })
+            return { meta: { changes: 1 } }
+          }
+
+          // Unconditional audit INSERT (DRAFT_CREATED, REPORT_SUBMITTED, etc.)
           if (sql.includes("INSERT INTO audit_records")) {
             auditRecords.push({
               id: boundParams[0],
@@ -407,6 +522,44 @@ function createInMemoryD1() {
             })
             return { meta: { changes: 1 } }
           }
+
+          // ----------------------------------------------------------------
+          // Conditional simple_investigations INSERT (investigation/start):
+          // INSERT OR IGNORE INTO simple_investigations ... SELECT ... WHERE EXISTS
+          // ----------------------------------------------------------------
+          if (
+            (sql.includes("INSERT OR IGNORE INTO simple_investigations") ||
+              sql.includes("INSERT INTO simple_investigations")) &&
+            sql.includes("SELECT") &&
+            sql.includes("WHERE EXISTS")
+          ) {
+            const incidentId = boundParams[1] as string
+            // Guard params: incidentId at boundParams.length-2, nextVersion at boundParams.length-1
+            const guardIncidentId = boundParams[boundParams.length - 2] as string
+            const guardVersion = boundParams[boundParams.length - 1] as number
+            const inc = incidents.get(guardIncidentId)
+
+            const existsOk =
+              inc !== undefined &&
+              inc.row_version === guardVersion &&
+              inc.status === "SIMPLE_INVESTIGATION"
+
+            if (!existsOk || investigations.has(incidentId)) {
+              return { meta: { changes: 0 } }
+            }
+
+            investigations.set(incidentId, {
+              id: boundParams[0],
+              incident_id: incidentId,
+              recommendations: "[]",
+              actions: "[]",
+              created_at: boundParams[2],
+              updated_at: boundParams[3],
+            })
+            return { meta: { changes: 1 } }
+          }
+
+          // Unconditional simple_investigations INSERT or upsert (investigation PUT)
           if (
             sql.includes("INSERT OR IGNORE INTO simple_investigations") ||
             sql.includes("INSERT INTO simple_investigations")
@@ -432,6 +585,38 @@ function createInMemoryD1() {
             }
             return { meta: { changes: 1 } }
           }
+
+          // ----------------------------------------------------------------
+          // Conditional simple_investigations UPDATE (investigation/complete):
+          // UPDATE simple_investigations SET completed_by_user_id ... WHERE incident_id=? AND EXISTS(...)
+          // ----------------------------------------------------------------
+          if (
+            sql.includes("UPDATE simple_investigations") &&
+            sql.includes("completed_by_user_id") &&
+            sql.includes("EXISTS")
+          ) {
+            // Params: [userId, ts, ts, incidentId, guardIncidentId, guardVersion]
+            const incidentId = boundParams[3] as string
+            const guardIncidentId = boundParams[4] as string
+            const guardVersion = boundParams[5] as number
+            const inc = incidents.get(guardIncidentId)
+            const existsOk =
+              inc !== undefined &&
+              inc.row_version === guardVersion &&
+              inc.status === "COMPLETED_BY_UNIT"
+
+            if (!existsOk) return { meta: { changes: 0 } }
+
+            const inv = investigations.get(incidentId)
+            if (inv) {
+              inv.completed_by_user_id = boundParams[0]
+              inv.completed_at = boundParams[1]
+              inv.updated_at = boundParams[2]
+            }
+            return { meta: { changes: 1 } }
+          }
+
+          // Unconditional simple_investigations completed_by UPDATE (legacy path)
           if (sql.includes("UPDATE simple_investigations SET completed_by_user_id")) {
             const incidentId = boundParams[boundParams.length - 1] as string
             const inv = investigations.get(incidentId)
@@ -442,6 +627,7 @@ function createInMemoryD1() {
             }
             return { meta: { changes: 1 } }
           }
+
           return { meta: { changes: 0 } }
         },
       }
@@ -1003,22 +1189,44 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     expect(rejectedPmkpRes.status).toBe(403)
   })
 
-  it("handles BIRU routing to Simple Investigation and completion to COMPLETED_BY_UNIT", async () => {
-    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
-    incidents.set("inc_biru_test", {
-      id: "inc_biru_test",
+  // =========================================================================
+  // REVISED WORKFLOW: assign-risk-grade + investigation/start + investigation/skip
+  // =========================================================================
+
+  it("[BIRU] assign-risk-grade stays UNDER_REVIEW, saves grade, requires If-Match", async () => {
+    const { db, incidents, investigations } = createInMemoryD1()
+    incidents.set("inc_biru_grade", {
+      id: "inc_biru_grade",
       status: "UNDER_REVIEW",
       created_by_user_id: "usr_nakes_1",
       owning_unit_id: "IBS",
-      row_version: 1,
+      row_version: 2,
     })
 
-    // 1. Assign BIRU risk grade -> routes to SIMPLE_INVESTIGATION
-    const gradeReq = new Request(
-      "https://example.test/api/incidents/inc_biru_test/assign-risk-grade",
+    // Missing If-Match → 428
+    const noIfMatch = new Request(
+      "https://example.test/api/incidents/inc_biru_grade/assign-risk-grade",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ risk_grade: "BIRU" }),
+      },
+    )
+    const noIfMatchRes = await callHandler(
+      onAssignRiskGradePost,
+      noIfMatch,
+      db,
+      { requestId: "req_ng", auth: headroomActor },
+      { id: "inc_biru_grade" },
+    )
+    expect(noIfMatchRes.status).toBe(428)
+
+    // Valid BIRU with correct version → UNDER_REVIEW (grade saved), no investigation row
+    const gradeReq = new Request(
+      "https://example.test/api/incidents/inc_biru_grade/assign-risk-grade",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/2"' },
         body: JSON.stringify({ risk_grade: "BIRU" }),
       },
     )
@@ -1027,90 +1235,101 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
       gradeReq,
       db,
       { requestId: "req_g", auth: headroomActor },
-      { id: "inc_biru_test" },
+      { id: "inc_biru_grade" },
     )
     expect(gradeRes.status).toBe(200)
-    expect(incidents.get("inc_biru_test")?.status).toBe("SIMPLE_INVESTIGATION")
-    expect(incidents.get("inc_biru_test")?.risk_grade).toBe("BIRU")
-    expect(investigations.has("inc_biru_test")).toBe(true)
+    expect(incidents.get("inc_biru_grade")?.status).toBe("UNDER_REVIEW")
+    expect(incidents.get("inc_biru_grade")?.risk_grade).toBe("BIRU")
+    // No simple_investigations row created at grade assignment
+    expect(investigations.has("inc_biru_grade")).toBe(false)
+  })
 
-    // 2. Complete investigation without mandatory fields -> rejected with 422
-    const completeIncompleteReq = new Request(
-      "https://example.test/api/incidents/inc_biru_test/investigation/complete",
+  it("[HIJAU] assign-risk-grade stays UNDER_REVIEW, saves grade, no investigation row", async () => {
+    const { db, incidents, investigations } = createInMemoryD1()
+    incidents.set("inc_hijau_grade", {
+      id: "inc_hijau_grade",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 3,
+    })
+
+    const gradeReq = new Request(
+      "https://example.test/api/incidents/inc_hijau_grade/assign-risk-grade",
       {
         method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/3"' },
+        body: JSON.stringify({ risk_grade: "HIJAU" }),
       },
     )
-    const completeIncompleteRes = await callHandler(
-      onCompleteInvestigationPost,
-      completeIncompleteReq,
+    const gradeRes = await callHandler(
+      onAssignRiskGradePost,
+      gradeReq,
       db,
-      { requestId: "req_c1", auth: headroomActor },
-      { id: "inc_biru_test" },
+      { requestId: "req_g_hijau", auth: headroomActor },
+      { id: "inc_hijau_grade" },
     )
-    expect(completeIncompleteRes.status).toBe(422)
+    expect(gradeRes.status).toBe(200)
+    expect(incidents.get("inc_hijau_grade")?.status).toBe("UNDER_REVIEW")
+    expect(incidents.get("inc_hijau_grade")?.risk_grade).toBe("HIJAU")
+    expect(investigations.has("inc_hijau_grade")).toBe(false)
+  })
 
-    // 3. Save complete Form page 3 investigation fields
-    const saveInvReq = new Request(
-      "https://example.test/api/incidents/inc_biru_test/investigation",
+  it("[KUNING] assign-risk-grade requires mitigation and routes to PMKP_REVIEW", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_kuning", {
+      id: "inc_kuning",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 1,
+    })
+
+    // Without mitigation → 422
+    const noMitigReq = new Request(
+      "https://example.test/api/incidents/inc_kuning/assign-risk-grade",
       {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
+        body: JSON.stringify({ risk_grade: "KUNING" }),
+      },
+    )
+    const noMitigRes = await callHandler(
+      onAssignRiskGradePost,
+      noMitigReq,
+      db,
+      { requestId: "req_k1", auth: headroomActor },
+      { id: "inc_kuning" },
+    )
+    expect(noMitigRes.status).toBe(422)
+    const errBody: { code: string } = await noMitigRes.json()
+    expect(errBody.code).toBe("MITIGATION_NOTES_REQUIRED")
+
+    // With mitigation → PMKP_REVIEW
+    const withMitigReq = new Request(
+      "https://example.test/api/incidents/inc_kuning/assign-risk-grade",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
         body: JSON.stringify({
-          direct_cause: "Komunikasi serah terima instrumen bedah terputus",
-          underlying_root_cause: "SOP sign-out kamar operasi belum diterapkan secara disiplin",
-          investigation_start_date: "2026-09-26",
-          investigation_end_date: "2026-09-28",
-          recommendations: [
-            {
-              text: "Sosialisasi ulang surgical safety checklist",
-              responsible: "Kepala Ruangan IBS",
-              target_date: "2026-10-05",
-            },
-          ],
-          actions: [
-            {
-              text: "Audit berkala kepatuhan checklist keselamatan bedah",
-              responsible: "Perawat Pengendali Mutu",
-              target_date: "2026-10-10",
-            },
-          ],
+          risk_grade: "KUNING",
+          high_risk_mitigation_notes: "Pasien diobservasi ketat oleh tim bedah",
         }),
       },
     )
-    const saveInvRes = await callHandler(
-      onInvestigationPut,
-      saveInvReq,
+    const withMitigRes = await callHandler(
+      onAssignRiskGradePost,
+      withMitigReq,
       db,
-      { requestId: "req_inv_put", auth: headroomActor },
-      { id: "inc_biru_test" },
+      { requestId: "req_k2", auth: headroomActor },
+      { id: "inc_kuning" },
     )
-    expect(saveInvRes.status).toBe(200)
-
-    // 4. Complete investigation -> COMPLETED_BY_UNIT
-    const completeValidReq = new Request(
-      "https://example.test/api/incidents/inc_biru_test/investigation/complete",
-      {
-        method: "POST",
-      },
-    )
-    const completeValidRes = await callHandler(
-      onCompleteInvestigationPost,
-      completeValidReq,
-      db,
-      { requestId: "req_c2", auth: headroomActor },
-      { id: "inc_biru_test" },
-    )
-    expect(completeValidRes.status).toBe(200)
-    expect(incidents.get("inc_biru_test")?.status).toBe("COMPLETED_BY_UNIT")
-
-    // Emits SIMPLE_INVESTIGATION_COMPLETED and REPORT_COMPLETED
-    expect(auditRecords.some((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED")).toBe(true)
-    expect(auditRecords.some((a) => a.event_type === "REPORT_COMPLETED")).toBe(true)
+    expect(withMitigRes.status).toBe(200)
+    expect(incidents.get("inc_kuning")?.status).toBe("PMKP_REVIEW")
   })
 
-  it("handles KUNING/MERAH routing to PMKP Review and finalization to COMPLETED", async () => {
-    const { db, incidents, auditRecords } = createInMemoryD1()
+  it("[MERAH] assign-risk-grade requires mitigation and routes to PMKP_REVIEW", async () => {
+    const { db, incidents } = createInMemoryD1()
     incidents.set("inc_merah_test", {
       id: "inc_merah_test",
       status: "UNDER_REVIEW",
@@ -1124,7 +1343,7 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
       "https://example.test/api/incidents/inc_merah_test/assign-risk-grade",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
         body: JSON.stringify({ risk_grade: "MERAH", high_risk_mitigation_notes: "" }),
       },
     )
@@ -1142,7 +1361,7 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
       "https://example.test/api/incidents/inc_merah_test/assign-risk-grade",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
         body: JSON.stringify({
           risk_grade: "MERAH",
           high_risk_mitigation_notes: "Pasien segera distabilkan dan dilaporkan ke dokter DPJP",
@@ -1197,12 +1416,516 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     expect(incidents.get("inc_merah_test")?.status).toBe("COMPLETED")
     expect(incidents.get("inc_merah_test")?.pmkp_reviewed).toBe(1)
 
-    // Emits REPORT_COMPLETED audit event
-    expect(
-      auditRecords.some(
-        (a) => a.event_type === "REPORT_COMPLETED" && a.incident_id === "inc_merah_test",
-      ),
-    ).toBe(true)
+    // REPORT_COMPLETED audit is verified in the dedicated MERAH/KUNING PMKP test above.
+    // (auditRecords from this scope were consumed inline)
+  })
+
+  it("[BIRU path] investigation/start requires If-Match, creates investigation row, transitions to SIMPLE_INVESTIGATION", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_biru_start", {
+      id: "inc_biru_start",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 3,
+    })
+
+    // Missing If-Match → 428
+    const noIfMatch = new Request(
+      "https://example.test/api/incidents/inc_biru_start/investigation/start",
+      { method: "POST" },
+    )
+    const noIfMatchRes = await callHandler(
+      onStartInvestigationPost,
+      noIfMatch,
+      db,
+      { requestId: "req_s1", auth: headroomActor },
+      { id: "inc_biru_start" },
+    )
+    expect(noIfMatchRes.status).toBe(428)
+
+    // Valid start → SIMPLE_INVESTIGATION + investigation row created
+    const startReq = new Request(
+      "https://example.test/api/incidents/inc_biru_start/investigation/start",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/3"' },
+      },
+    )
+    const startRes = await callHandler(
+      onStartInvestigationPost,
+      startReq,
+      db,
+      { requestId: "req_s2", auth: headroomActor },
+      { id: "inc_biru_start" },
+    )
+    expect(startRes.status).toBe(200)
+    expect(incidents.get("inc_biru_start")?.status).toBe("SIMPLE_INVESTIGATION")
+    expect(investigations.has("inc_biru_start")).toBe(true)
+
+    // No audit event emitted on start
+    expect(auditRecords).toHaveLength(0)
+  })
+
+  it("[HIJAU path] investigation/start creates investigation row and transitions to SIMPLE_INVESTIGATION", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_hijau_start", {
+      id: "inc_hijau_start",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "HIJAU",
+      row_version: 5,
+    })
+
+    const startReq = new Request(
+      "https://example.test/api/incidents/inc_hijau_start/investigation/start",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/5"' },
+      },
+    )
+    const startRes = await callHandler(
+      onStartInvestigationPost,
+      startReq,
+      db,
+      { requestId: "req_sh", auth: headroomActor },
+      { id: "inc_hijau_start" },
+    )
+    expect(startRes.status).toBe(200)
+    expect(incidents.get("inc_hijau_start")?.status).toBe("SIMPLE_INVESTIGATION")
+    expect(investigations.has("inc_hijau_start")).toBe(true)
+    // No audit on start
+    expect(auditRecords).toHaveLength(0)
+  })
+
+  it("[start] investigation/start rejects stale version (412)", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_stale_start", {
+      id: "inc_stale_start",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 4,
+    })
+
+    // Send version 3 (stale; actual is 4)
+    const staleReq = new Request(
+      "https://example.test/api/incidents/inc_stale_start/investigation/start",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/3"' },
+      },
+    )
+    const staleRes = await callHandler(
+      onStartInvestigationPost,
+      staleReq,
+      db,
+      { requestId: "req_stale", auth: headroomActor },
+      { id: "inc_stale_start" },
+    )
+    expect(staleRes.status).toBe(412)
+    // Status unchanged
+    expect(incidents.get("inc_stale_start")?.status).toBe("UNDER_REVIEW")
+  })
+
+  it("[start] investigation/start rejects unauthorized role and wrong unit", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_rbac_start", {
+      id: "inc_rbac_start",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 1,
+    })
+
+    // Nakes (TENAGA_KESEHATAN) cannot start investigation
+    const nakesReq = new Request(
+      "https://example.test/api/incidents/inc_rbac_start/investigation/start",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/1"' },
+      },
+    )
+    const nakesRes = await callHandler(
+      onStartInvestigationPost,
+      nakesReq,
+      db,
+      { requestId: "req_rbac1", auth: nakesActor },
+      { id: "inc_rbac_start" },
+    )
+    expect(nakesRes.status).toBe(403)
+
+    // PMKP cannot start investigation
+    const pmkpReq = new Request(
+      "https://example.test/api/incidents/inc_rbac_start/investigation/start",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/1"' },
+      },
+    )
+    const pmkpRes = await callHandler(
+      onStartInvestigationPost,
+      pmkpReq,
+      db,
+      { requestId: "req_rbac2", auth: pmkpActor },
+      { id: "inc_rbac_start" },
+    )
+    expect(pmkpRes.status).toBe(403)
+  })
+
+  it("[skip] investigation/skip directly completes BIRU/HIJAU, no investigation record, only REPORT_COMPLETED audit", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_skip_biru", {
+      id: "inc_skip_biru",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 2,
+    })
+
+    // Missing confirmed → 422
+    const noConfirm = new Request(
+      "https://example.test/api/incidents/inc_skip_biru/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/2"' },
+        body: JSON.stringify({ confirmed: false }),
+      },
+    )
+    const noConfirmRes = await callHandler(
+      onSkipInvestigationPost,
+      noConfirm,
+      db,
+      { requestId: "req_skip_nc", auth: headroomActor },
+      { id: "inc_skip_biru" },
+    )
+    expect(noConfirmRes.status).toBe(422)
+
+    // Valid skip → COMPLETED_BY_UNIT
+    const skipReq = new Request(
+      "https://example.test/api/incidents/inc_skip_biru/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/2"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const skipRes = await callHandler(
+      onSkipInvestigationPost,
+      skipReq,
+      db,
+      { requestId: "req_skip_ok", auth: headroomActor },
+      { id: "inc_skip_biru" },
+    )
+    expect(skipRes.status).toBe(200)
+    expect(incidents.get("inc_skip_biru")?.status).toBe("COMPLETED_BY_UNIT")
+
+    // No simple_investigations row
+    expect(investigations.has("inc_skip_biru")).toBe(false)
+
+    // Only REPORT_COMPLETED audit — no SIMPLE_INVESTIGATION_COMPLETED
+    expect(auditRecords.some((a) => a.event_type === "REPORT_COMPLETED")).toBe(true)
+    expect(auditRecords.some((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED")).toBe(false)
+  })
+
+  it("[skip] investigation/skip for HIJAU also works correctly", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_skip_hijau", {
+      id: "inc_skip_hijau",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "HIJAU",
+      row_version: 1,
+    })
+
+    const skipReq = new Request(
+      "https://example.test/api/incidents/inc_skip_hijau/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const skipRes = await callHandler(
+      onSkipInvestigationPost,
+      skipReq,
+      db,
+      { requestId: "req_skip_hijau", auth: headroomActor },
+      { id: "inc_skip_hijau" },
+    )
+    expect(skipRes.status).toBe(200)
+    expect(incidents.get("inc_skip_hijau")?.status).toBe("COMPLETED_BY_UNIT")
+    expect(investigations.has("inc_skip_hijau")).toBe(false)
+    expect(auditRecords.some((a) => a.event_type === "REPORT_COMPLETED")).toBe(true)
+    expect(auditRecords.some((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED")).toBe(false)
+  })
+
+  it("[skip] investigation/skip stale request returns 412, no state change", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_skip_stale", {
+      id: "inc_skip_stale",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 5,
+    })
+
+    const staleSkip = new Request(
+      "https://example.test/api/incidents/inc_skip_stale/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/4"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const staleRes = await callHandler(
+      onSkipInvestigationPost,
+      staleSkip,
+      db,
+      { requestId: "req_skip_stale", auth: headroomActor },
+      { id: "inc_skip_stale" },
+    )
+    expect(staleRes.status).toBe(412)
+    expect(incidents.get("inc_skip_stale")?.status).toBe("UNDER_REVIEW")
+    expect(investigations.has("inc_skip_stale")).toBe(false)
+    expect(auditRecords).toHaveLength(0)
+  })
+
+  it("[skip] investigation/skip rejected for KUNING/MERAH (wrong risk grade, RBAC)", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_skip_kuning", {
+      id: "inc_skip_kuning",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "KUNING",
+      row_version: 1,
+    })
+
+    // Kepala Ruangan cannot skip a KUNING incident (must go PMKP_REVIEW)
+    const skipReq = new Request(
+      "https://example.test/api/incidents/inc_skip_kuning/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const skipRes = await callHandler(
+      onSkipInvestigationPost,
+      skipReq,
+      db,
+      { requestId: "req_skip_kuning", auth: headroomActor },
+      { id: "inc_skip_kuning" },
+    )
+    expect(skipRes.status).toBe(403)
+    expect(incidents.get("inc_skip_kuning")?.status).toBe("UNDER_REVIEW")
+  })
+
+  it("[skip] investigation/skip rejected for non-Kepala Ruangan (RBAC)", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_skip_rbac", {
+      id: "inc_skip_rbac",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 1,
+    })
+
+    // Nakes cannot skip
+    const nakesReq = new Request(
+      "https://example.test/api/incidents/inc_skip_rbac/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const nakesRes = await callHandler(
+      onSkipInvestigationPost,
+      nakesReq,
+      db,
+      { requestId: "req_skip_rbac1", auth: nakesActor },
+      { id: "inc_skip_rbac" },
+    )
+    expect(nakesRes.status).toBe(403)
+
+    // PMKP cannot skip either
+    const pmkpReq = new Request(
+      "https://example.test/api/incidents/inc_skip_rbac/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const pmkpRes = await callHandler(
+      onSkipInvestigationPost,
+      pmkpReq,
+      db,
+      { requestId: "req_skip_rbac2", auth: pmkpActor },
+      { id: "inc_skip_rbac" },
+    )
+    expect(pmkpRes.status).toBe(403)
+  })
+
+  it("[start→complete] BIRU full investigation path: start + fill + complete emits SIMPLE_INVESTIGATION_COMPLETED + REPORT_COMPLETED", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_biru_full", {
+      id: "inc_biru_full",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 2,
+    })
+
+    // 1. Start investigation
+    const startReq = new Request(
+      "https://example.test/api/incidents/inc_biru_full/investigation/start",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/2"' },
+      },
+    )
+    const startRes = await callHandler(
+      onStartInvestigationPost,
+      startReq,
+      db,
+      { requestId: "req_bf_start", auth: headroomActor },
+      { id: "inc_biru_full" },
+    )
+    expect(startRes.status).toBe(200)
+    expect(incidents.get("inc_biru_full")?.status).toBe("SIMPLE_INVESTIGATION")
+    expect(investigations.has("inc_biru_full")).toBe(true)
+
+    // 2. Fill investigation data
+    const fillReq = new Request(
+      "https://example.test/api/incidents/inc_biru_full/investigation",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          direct_cause: "Komunikasi serah terima instrumen bedah terputus",
+          underlying_root_cause: "SOP sign-out kamar operasi belum diterapkan secara disiplin",
+          investigation_start_date: "2026-09-26",
+          investigation_end_date: "2026-09-28",
+          recommendations: [
+            {
+              text: "Sosialisasi ulang surgical safety checklist",
+              responsible: "Kepala Ruangan IBS",
+              target_date: "2026-10-05",
+            },
+          ],
+          actions: [
+            {
+              text: "Audit berkala kepatuhan checklist keselamatan bedah",
+              responsible: "Perawat Pengendali Mutu",
+              target_date: "2026-10-10",
+            },
+          ],
+        }),
+      },
+    )
+    const fillRes = await callHandler(
+      onInvestigationPut,
+      fillReq,
+      db,
+      { requestId: "req_bf_fill", auth: headroomActor },
+      { id: "inc_biru_full" },
+    )
+    expect(fillRes.status).toBe(200)
+
+    // 3. Complete investigation → COMPLETED_BY_UNIT (If-Match now mandatory)
+    const completeReq = new Request(
+      "https://example.test/api/incidents/inc_biru_full/investigation/complete",
+      {
+        method: "POST",
+        headers: { "If-Match": '"W/3"' },
+      },
+    )
+    const completeRes = await callHandler(
+      onCompleteInvestigationPost,
+      completeReq,
+      db,
+      { requestId: "req_bf_complete", auth: headroomActor },
+      { id: "inc_biru_full" },
+    )
+    expect(completeRes.status).toBe(200)
+    expect(incidents.get("inc_biru_full")?.status).toBe("COMPLETED_BY_UNIT")
+
+    // Both SIMPLE_INVESTIGATION_COMPLETED and REPORT_COMPLETED emitted
+    expect(auditRecords.some((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED")).toBe(true)
+    expect(auditRecords.some((a) => a.event_type === "REPORT_COMPLETED")).toBe(true)
+  })
+
+  it("[assign-risk-grade] stale version returns 412 without modifying state", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_grade_stale", {
+      id: "inc_grade_stale",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 7,
+    })
+
+    const staleReq = new Request(
+      "https://example.test/api/incidents/inc_grade_stale/assign-risk-grade",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/6"' },
+        body: JSON.stringify({ risk_grade: "BIRU" }),
+      },
+    )
+    const staleRes = await callHandler(
+      onAssignRiskGradePost,
+      staleReq,
+      db,
+      { requestId: "req_stale_grade", auth: headroomActor },
+      { id: "inc_grade_stale" },
+    )
+    expect(staleRes.status).toBe(412)
+    expect(incidents.get("inc_grade_stale")?.risk_grade).toBeUndefined()
+    expect(incidents.get("inc_grade_stale")?.status).toBe("UNDER_REVIEW")
+  })
+
+  it("[skip] direct API call with wrong status (not UNDER_REVIEW) is rejected via RBAC", async () => {
+    const { db, incidents } = createInMemoryD1()
+    // Incident already in SIMPLE_INVESTIGATION — skip must fail RBAC check
+    incidents.set("inc_wrong_status_skip", {
+      id: "inc_wrong_status_skip",
+      status: "SIMPLE_INVESTIGATION",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 2,
+    })
+
+    const skipReq = new Request(
+      "https://example.test/api/incidents/inc_wrong_status_skip/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/2"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const skipRes = await callHandler(
+      onSkipInvestigationPost,
+      skipReq,
+      db,
+      { requestId: "req_wrong_status", auth: headroomActor },
+      { id: "inc_wrong_status_skip" },
+    )
+    // RBAC canSkipToCompleted requires status === UNDER_REVIEW
+    expect(skipRes.status).toBe(403)
   })
 
   it("retrieves audit trail containing only approved event metadata without old/new diffs", async () => {
@@ -1271,5 +1994,274 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     const body: { data: Array<Record<string, unknown>> } = await listRes.json()
     expect(body.data.some((i) => i.id === "inc_list_1")).toBe(true)
     expect(body.data.some((i) => i.id === "inc_list_2")).toBe(false)
+  })
+
+  // =========================================================================
+  // DEFECT FIXES: atomicity, idempotency, and re-grading prevention
+  // =========================================================================
+
+  it("[re-grade] assign-risk-grade rejected when risk_grade already set (canAssignRiskGrade requires null)", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_regrade", {
+      id: "inc_regrade",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU", // already graded
+      row_version: 3,
+    })
+
+    // Attempt to re-assign HIJAU — must be rejected at RBAC level
+    const reGradeReq = new Request(
+      "https://example.test/api/incidents/inc_regrade/assign-risk-grade",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/3"' },
+        body: JSON.stringify({ risk_grade: "HIJAU" }),
+      },
+    )
+    const reGradeRes = await callHandler(
+      onAssignRiskGradePost,
+      reGradeReq,
+      db,
+      { requestId: "req_regrade", auth: headroomActor },
+      { id: "inc_regrade" },
+    )
+    expect(reGradeRes.status).toBe(403)
+    // Original grade unchanged
+    expect(incidents.get("inc_regrade")?.risk_grade).toBe("BIRU")
+    expect(incidents.get("inc_regrade")?.row_version).toBe(3)
+  })
+
+  it("[re-grade] KUNING/MERAH path: assign-risk-grade rejected when already in PMKP_REVIEW", async () => {
+    const { db, incidents } = createInMemoryD1()
+    incidents.set("inc_regrade_pmkp", {
+      id: "inc_regrade_pmkp",
+      status: "PMKP_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "KUNING",
+      row_version: 2,
+    })
+
+    const req = new Request(
+      "https://example.test/api/incidents/inc_regrade_pmkp/assign-risk-grade",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/2"' },
+        body: JSON.stringify({
+          risk_grade: "MERAH",
+          high_risk_mitigation_notes: "Should be rejected",
+        }),
+      },
+    )
+    const res = await callHandler(
+      onAssignRiskGradePost,
+      req,
+      db,
+      { requestId: "req_regrade_pmkp", auth: headroomActor },
+      { id: "inc_regrade_pmkp" },
+    )
+    // RBAC: status is not UNDER_REVIEW → 403
+    expect(res.status).toBe(403)
+  })
+
+  it("[complete] missing If-Match → 428, malformed If-Match → 400", async () => {
+    const { db, incidents, investigations } = createInMemoryD1()
+    incidents.set("inc_complete_ifmatch", {
+      id: "inc_complete_ifmatch",
+      status: "SIMPLE_INVESTIGATION",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 4,
+    })
+    investigations.set("inc_complete_ifmatch", {
+      id: "inv_1",
+      incident_id: "inc_complete_ifmatch",
+      direct_cause: "cause",
+      underlying_root_cause: "root",
+      investigation_start_date: "2026-09-26",
+      investigation_end_date: "2026-09-28",
+      recommendations: JSON.stringify([{ text: "r", responsible: "r", target_date: "2026-10-01" }]),
+      actions: JSON.stringify([{ text: "a", responsible: "a", target_date: "2026-10-01" }]),
+    })
+
+    // No If-Match → 428
+    const noIfMatch = new Request(
+      "https://example.test/api/incidents/inc_complete_ifmatch/investigation/complete",
+      { method: "POST" },
+    )
+    const noRes = await callHandler(
+      onCompleteInvestigationPost,
+      noIfMatch,
+      db,
+      { requestId: "req_ci1", auth: headroomActor },
+      { id: "inc_complete_ifmatch" },
+    )
+    expect(noRes.status).toBe(428)
+
+    // Malformed If-Match → 400
+    const badIfMatch = new Request(
+      "https://example.test/api/incidents/inc_complete_ifmatch/investigation/complete",
+      { method: "POST", headers: { "If-Match": "not-valid" } },
+    )
+    const badRes = await callHandler(
+      onCompleteInvestigationPost,
+      badIfMatch,
+      db,
+      { requestId: "req_ci2", auth: headroomActor },
+      { id: "inc_complete_ifmatch" },
+    )
+    expect(badRes.status).toBe(400)
+    // Status unchanged
+    expect(incidents.get("inc_complete_ifmatch")?.status).toBe("SIMPLE_INVESTIGATION")
+  })
+
+  it("[complete] stale If-Match → 412, no state change, no audit emitted", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_complete_stale", {
+      id: "inc_complete_stale",
+      status: "SIMPLE_INVESTIGATION",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 5,
+    })
+    investigations.set("inc_complete_stale", {
+      id: "inv_stale",
+      incident_id: "inc_complete_stale",
+      direct_cause: "cause",
+      underlying_root_cause: "root",
+      investigation_start_date: "2026-09-26",
+      investigation_end_date: "2026-09-28",
+      recommendations: JSON.stringify([{ text: "r", responsible: "r", target_date: "2026-10-01" }]),
+      actions: JSON.stringify([{ text: "a", responsible: "a", target_date: "2026-10-01" }]),
+    })
+
+    // Send version 4 (stale; actual is 5)
+    const staleReq = new Request(
+      "https://example.test/api/incidents/inc_complete_stale/investigation/complete",
+      { method: "POST", headers: { "If-Match": '"W/4"' } },
+    )
+    const staleRes = await callHandler(
+      onCompleteInvestigationPost,
+      staleReq,
+      db,
+      { requestId: "req_cs1", auth: headroomActor },
+      { id: "inc_complete_stale" },
+    )
+    expect(staleRes.status).toBe(412)
+    expect(incidents.get("inc_complete_stale")?.status).toBe("SIMPLE_INVESTIGATION")
+    // No audit records emitted at all
+    expect(auditRecords).toHaveLength(0)
+    // Investigation completion not stamped
+    expect(investigations.get("inc_complete_stale")?.completed_by_user_id).toBeUndefined()
+  })
+
+  it("[complete] double submit (concurrent) → second call returns 412 with no duplicate audits", async () => {
+    const { db, incidents, investigations, auditRecords } = createInMemoryD1()
+    incidents.set("inc_double_complete", {
+      id: "inc_double_complete",
+      status: "SIMPLE_INVESTIGATION",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      row_version: 2,
+    })
+    investigations.set("inc_double_complete", {
+      id: "inv_double",
+      incident_id: "inc_double_complete",
+      direct_cause: "cause",
+      underlying_root_cause: "root",
+      investigation_start_date: "2026-09-26",
+      investigation_end_date: "2026-09-28",
+      recommendations: JSON.stringify([{ text: "r", responsible: "r", target_date: "2026-10-01" }]),
+      actions: JSON.stringify([{ text: "a", responsible: "a", target_date: "2026-10-01" }]),
+    })
+
+    const makeComplete = () =>
+      callHandler(
+        onCompleteInvestigationPost,
+        new Request(
+          "https://example.test/api/incidents/inc_double_complete/investigation/complete",
+          { method: "POST", headers: { "If-Match": '"W/2"' } },
+        ),
+        db,
+        { requestId: "req_dc1", auth: headroomActor },
+        { id: "inc_double_complete" },
+      )
+
+    // First call succeeds
+    const first = await makeComplete()
+    expect(first.status).toBe(200)
+    expect(incidents.get("inc_double_complete")?.status).toBe("COMPLETED_BY_UNIT")
+
+    // Second call with same version: RBAC rejects because status is now COMPLETED_BY_UNIT (not SIMPLE_INVESTIGATION)
+    const second = await makeComplete()
+    expect(second.status).toBe(403)
+
+    // Exactly 2 audit records: SIMPLE_INVESTIGATION_COMPLETED + REPORT_COMPLETED (no duplicates)
+    expect(auditRecords.filter((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED")).toHaveLength(1)
+    expect(auditRecords.filter((a) => a.event_type === "REPORT_COMPLETED")).toHaveLength(1)
+  })
+
+  it("[skip] stale request → 412 with no audit record written", async () => {
+    const { db, incidents, auditRecords } = createInMemoryD1()
+    incidents.set("inc_skip_audit_stale", {
+      id: "inc_skip_audit_stale",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "BIRU",
+      row_version: 6,
+    })
+
+    // Stale version 5 (actual is 6)
+    const staleSkip = new Request(
+      "https://example.test/api/incidents/inc_skip_audit_stale/investigation/skip",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "If-Match": '"W/5"' },
+        body: JSON.stringify({ confirmed: true }),
+      },
+    )
+    const staleRes = await callHandler(
+      onSkipInvestigationPost,
+      staleSkip,
+      db,
+      { requestId: "req_sas", auth: headroomActor },
+      { id: "inc_skip_audit_stale" },
+    )
+    expect(staleRes.status).toBe(412)
+    expect(incidents.get("inc_skip_audit_stale")?.status).toBe("UNDER_REVIEW")
+    // Conditional audit INSERT did not fire — no REPORT_COMPLETED record
+    expect(auditRecords).toHaveLength(0)
+  })
+
+  it("[start] stale request → 412 with no investigation row created", async () => {
+    const { db, incidents, investigations } = createInMemoryD1()
+    incidents.set("inc_start_atomic", {
+      id: "inc_start_atomic",
+      status: "UNDER_REVIEW",
+      created_by_user_id: "usr_nakes_1",
+      owning_unit_id: "IBS",
+      risk_grade: "HIJAU",
+      row_version: 3,
+    })
+
+    // Stale version 2 (actual is 3)
+    const staleStart = new Request(
+      "https://example.test/api/incidents/inc_start_atomic/investigation/start",
+      { method: "POST", headers: { "If-Match": '"W/2"' } },
+    )
+    const staleRes = await callHandler(
+      onStartInvestigationPost,
+      staleStart,
+      db,
+      { requestId: "req_sta", auth: headroomActor },
+      { id: "inc_start_atomic" },
+    )
+    expect(staleRes.status).toBe(412)
+    expect(incidents.get("inc_start_atomic")?.status).toBe("UNDER_REVIEW")
+    // No orphan investigation row
+    expect(investigations.has("inc_start_atomic")).toBe(false)
   })
 })

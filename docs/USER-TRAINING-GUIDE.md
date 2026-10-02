@@ -105,10 +105,17 @@ _Kepala Ruangan / Kasubag Instalasi Bedah Sentral._
 #### D. Menetapkan Pita Grading Risiko
 
 1. Pada status `UNDER_REVIEW`, pilih salah satu pita risiko secara manual klinis:
-   - **BIRU (Rendah)** atau **HIJAU (Sedang):** Klik tombol penetapan. Laporan otomatis dialihkan ke status `SIMPLE_INVESTIGATION` dan membuka Lembar Kerja Investigasi Sederhana di bagian bawah.
+   - **BIRU (Rendah)** atau **HIJAU (Sedang):** Klik tombol penetapan. Status tetap `UNDER_REVIEW` dan aplikasi menampilkan pilihan tindak lanjut.
    - **KUNING (Tinggi)** atau **MERAH (Ekstrem):** Wajib mengisi **Catatan Awal Mitigasi & Tindakan Pencegahan Segera**. Laporan otomatis dialihkan ke status `PMKP_REVIEW` untuk eskalasi ke Komite Mutu.
 
-#### E. Mengisi & Menyelesaikan Lembar Investigasi Sederhana (BIRU / HIJAU)
+#### E. Memilih Tindak Lanjut BIRU / HIJAU
+
+1. Setelah grading BIRU/HIJAU tersimpan, jawab pertanyaan **"Apakah laporan ini perlu dilanjutkan ke Investigasi Sederhana?"**.
+2. Pilih **"Lanjut ke Investigasi Sederhana"** jika penyebab dan rencana perbaikan perlu didokumentasikan. Status berubah menjadi `SIMPLE_INVESTIGATION` dan lembar investigasi muncul.
+3. Pilih **"Selesaikan Tanpa Investigasi"** bila peninjauan unit menyimpulkan investigasi sederhana tidak diperlukan.
+4. Untuk penyelesaian langsung, baca dialog konfirmasi dan pilih **"Ya, Selesaikan Permanen"**. Status berubah menjadi `COMPLETED_BY_UNIT`, laporan terkunci, dan tidak ada lembar investigasi yang dibuat.
+
+#### F. Mengisi & Menyelesaikan Lembar Investigasi Sederhana (BIRU / HIJAU)
 
 1. Pada laporan berstatus `SIMPLE_INVESTIGATION`, gulir ke **Bagian III**.
 2. Isi Penyebab Langsung Insiden (_Direct Cause_) dan Akar Masalah (_Root Cause_).

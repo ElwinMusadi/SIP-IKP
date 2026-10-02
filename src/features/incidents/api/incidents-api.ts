@@ -127,6 +127,7 @@ export async function requestRevision(
 export async function assignRiskGrade(
   id: string,
   riskGrade: string,
+  rowVersion: number,
   highRiskMitigationNotes?: string,
   csrfToken?: string,
 ): Promise<IncidentReport> {
@@ -134,12 +135,48 @@ export async function assignRiskGrade(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "If-Match": `"W/${String(rowVersion)}"`,
       ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     },
     body: JSON.stringify({
       risk_grade: riskGrade,
       high_risk_mitigation_notes: highRiskMitigationNotes,
+      row_version: rowVersion,
     }),
+  })
+  return handleResponse<IncidentReport>(res)
+}
+
+export async function startInvestigation(
+  id: string,
+  rowVersion: number,
+  csrfToken?: string,
+): Promise<IncidentReport> {
+  const res = await fetch(`/api/incidents/${id}/investigation/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "If-Match": `"W/${String(rowVersion)}"`,
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    body: JSON.stringify({ row_version: rowVersion }),
+  })
+  return handleResponse<IncidentReport>(res)
+}
+
+export async function skipInvestigation(
+  id: string,
+  rowVersion: number,
+  csrfToken?: string,
+): Promise<IncidentReport> {
+  const res = await fetch(`/api/incidents/${id}/investigation/skip`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "If-Match": `"W/${String(rowVersion)}"`,
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    body: JSON.stringify({ confirmed: true, row_version: rowVersion }),
   })
   return handleResponse<IncidentReport>(res)
 }
@@ -184,13 +221,17 @@ export async function saveInvestigation(
 
 export async function completeInvestigation(
   id: string,
+  rowVersion: number,
   csrfToken?: string,
 ): Promise<IncidentReport> {
   const res = await fetch(`/api/incidents/${id}/investigation/complete`, {
     method: "POST",
     headers: {
+      "Content-Type": "application/json",
+      "If-Match": `"W/${String(rowVersion)}"`,
       ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
     },
+    body: JSON.stringify({ row_version: rowVersion }),
   })
   return handleResponse<IncidentReport>(res)
 }

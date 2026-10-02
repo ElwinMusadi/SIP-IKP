@@ -71,10 +71,10 @@
   - **Result:** Transitions to `REVISION_REQUIRED`. Emits `REVISION_REQUIRED` audit event.
 - **`POST /api/incidents/:id/assign-risk-grade`**
   - **Auth Required:** Yes (`KEPALA_RUANGAN` only).
-  - **Precondition:** Status must be `UNDER_REVIEW`.
+  - **Precondition:** Status must be `UNDER_REVIEW`; current `If-Match: "W/<row_version>"` is mandatory.
   - **Payload:** `risk_grade` (`BIRU` | `HIJAU` | `KUNING` | `MERAH`), and if `KUNING`/`MERAH`: mandatory `high_risk_mitigation_notes`.
   - **Result:**
-    - If `BIRU`/`HIJAU` -> `SIMPLE_INVESTIGATION`, initializes `simple_investigations` row.
+    - If `BIRU`/`HIJAU` -> remains `UNDER_REVIEW`; no `simple_investigations` row is created until the explicit start action.
     - If `KUNING`/`MERAH` -> `PMKP_REVIEW`.
 - **`POST /api/incidents/:id/emergency-correction`**
   - **Auth Required:** Yes (Strictly `KEPALA_RUANGAN` only).
@@ -83,6 +83,15 @@
   - **Result:** Updates `incident_reports` AND `incident_submission_snapshots`. Emits `EMERGENCY_CORRECTION` audit event.
 
 ### 2.4 Simple Investigation (Form Page 3)
+
+- **`POST /api/incidents/:id/investigation/start`**
+  - **Auth Required:** Yes (`KEPALA_RUANGAN` IBS only).
+  - **Precondition:** Status `UNDER_REVIEW`; stored grade must be `BIRU` or `HIJAU`; current `If-Match: "W/<row_version>"` is mandatory.
+  - **Result:** Atomically transitions to `SIMPLE_INVESTIGATION` and creates the single `simple_investigations` row. No start audit event is emitted because the approved minimal audit model has no such event.
+- **`POST /api/incidents/:id/investigation/skip`**
+  - **Auth Required:** Yes (`KEPALA_RUANGAN` IBS only).
+  - **Precondition:** Status `UNDER_REVIEW`; stored grade must be `BIRU` or `HIJAU`; current `If-Match: "W/<row_version>"` and `{ "confirmed": true }` are mandatory.
+  - **Result:** Atomically transitions to terminal `COMPLETED_BY_UNIT` and emits only `REPORT_COMPLETED`. It does not create a Simple Investigation record.
 
 - **`GET /api/incidents/:id/investigation`**
   - **Auth Required:** Yes (IBS staff).
@@ -94,7 +103,7 @@
   - **Result:** Overwrites single simple investigation record (no version history).
 - **`POST /api/incidents/:id/investigation/complete`**
   - **Auth Required:** Yes (`KEPALA_RUANGAN` only).
-  - **Precondition:** Status must be `SIMPLE_INVESTIGATION`.
+  - **Precondition:** Status must be `SIMPLE_INVESTIGATION`; current `If-Match: "W/<row_version>"` is mandatory.
   - **Validation:** All Form page 3 fields must be complete. `end_date >= start_date`. Recommendations and actions arrays length >= 1.
   - **Result:** Sets `status = 'COMPLETED_BY_UNIT'`, `completed_by_user_id = user.id`. Emits `SIMPLE_INVESTIGATION_COMPLETED` and `REPORT_COMPLETED` audit events atomically. Terminal state.
 

@@ -29,6 +29,8 @@ import {
   requestRevision,
   saveInvestigation,
   savePmkpReview,
+  skipInvestigation,
+  startInvestigation,
 } from "../api/incidents-api"
 import { AuditTimelineView } from "../components/audit-timeline-view"
 import { EmergencyCorrectionDialog } from "../components/emergency-correction-dialog"
@@ -44,6 +46,7 @@ import {
   type StatusMeta,
 } from "../lib/labels"
 import type { AuditRecord, IncidentReport } from "../types/incident"
+import { showsInvestigationWorksheet } from "../lib/workflow-view"
 
 interface LocationState {
   submitSuccess?: boolean
@@ -278,7 +281,13 @@ export function IncidentDetailPage() {
           {isHeadOfRoom && (report.status === "SUBMITTED" || report.status === "UNDER_REVIEW") && (
             <HeadRoomReviewPanel
               onAssignRiskGrade={async (grade, notes) => {
-                await assignRiskGrade(report.id, grade, notes, csrfToken ?? undefined)
+                await assignRiskGrade(
+                  report.id,
+                  grade,
+                  report.row_version,
+                  notes,
+                  csrfToken ?? undefined,
+                )
                 await loadReport()
               }}
               onOpenEmergencyCorrection={() => {
@@ -292,17 +301,29 @@ export function IncidentDetailPage() {
                 await requestRevision(report.id, reason, csrfToken ?? undefined)
                 await loadReport()
               }}
+              onSkipInvestigation={async () => {
+                await skipInvestigation(report.id, report.row_version, csrfToken ?? undefined)
+                await loadReport()
+              }}
+              onStartInvestigation={async () => {
+                await startInvestigation(report.id, report.row_version, csrfToken ?? undefined)
+                await loadReport()
+              }}
               report={report}
             />
           )}
 
           {/* Simple Investigation Worksheet (BIRU / HIJAU) */}
-          {(report.status === "SIMPLE_INVESTIGATION" || report.status === "COMPLETED_BY_UNIT") && (
+          {showsInvestigationWorksheet(report) && (
             <InvestigationWorksheet
               canEdit={isHeadOfRoom && report.status === "SIMPLE_INVESTIGATION"}
               investigation={report.investigation}
               onComplete={async () => {
-                await completeInvestigation(report.id, csrfToken ?? undefined)
+                await completeInvestigation(
+                  report.id,
+                  report.row_version,
+                  csrfToken ?? undefined,
+                )
                 await loadReport()
               }}
               onSave={async (invData) => {

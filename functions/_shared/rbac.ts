@@ -114,15 +114,17 @@ export function canRequestRevision(
 
 export function canAssignRiskGrade(
   user: AuthenticatedUser,
-  report: IncidentReportSummary,
+  report: IncidentReportSummary & { risk_grade?: string | null },
 ): boolean {
   if (!user.isActive) {
     return false
   }
+  // risk_grade must be null: re-grading after a grade is already set is rejected.
   return (
     user.role === "KEPALA_RUANGAN" &&
     report.status === "UNDER_REVIEW" &&
-    report.owning_unit_id === "IBS"
+    report.owning_unit_id === "IBS" &&
+    (report.risk_grade === null || report.risk_grade === undefined)
   )
 }
 
@@ -167,6 +169,44 @@ export function canCompleteSimpleInvestigation(
     user.role === "KEPALA_RUANGAN" &&
     report.status === "SIMPLE_INVESTIGATION" &&
     report.owning_unit_id === "IBS"
+  )
+}
+
+/**
+ * Kepala Ruangan IBS may start a simple investigation for BIRU/HIJAU incidents
+ * that are still UNDER_REVIEW (i.e. grade was assigned but investigation not yet opened).
+ */
+export function canStartSimpleInvestigation(
+  user: AuthenticatedUser,
+  report: IncidentReportSummary & { risk_grade?: string | null },
+): boolean {
+  if (!user.isActive) {
+    return false
+  }
+  return (
+    user.role === "KEPALA_RUANGAN" &&
+    report.status === "UNDER_REVIEW" &&
+    report.owning_unit_id === "IBS" &&
+    (report.risk_grade === "BIRU" || report.risk_grade === "HIJAU")
+  )
+}
+
+/**
+ * Kepala Ruangan IBS may skip simple investigation and complete directly for
+ * BIRU/HIJAU incidents still in UNDER_REVIEW (no investigation record required).
+ */
+export function canSkipToCompleted(
+  user: AuthenticatedUser,
+  report: IncidentReportSummary & { risk_grade?: string | null },
+): boolean {
+  if (!user.isActive) {
+    return false
+  }
+  return (
+    user.role === "KEPALA_RUANGAN" &&
+    report.status === "UNDER_REVIEW" &&
+    report.owning_unit_id === "IBS" &&
+    (report.risk_grade === "BIRU" || report.risk_grade === "HIJAU")
   )
 }
 

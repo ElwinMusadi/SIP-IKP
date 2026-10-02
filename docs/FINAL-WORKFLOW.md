@@ -30,20 +30,26 @@ The workflow comprises exactly **8 canonical states**:
    └───────────┬───────────┘  └───────────────────┘ (RESUBMIT_REPORT)
                │
                │ ASSIGN_RISK_GRADE
-               ├─────────────────────────────────────────┐
-               │                                         │
-               │ [BIRU / HIJAU]                          │ [KUNING / MERAH]
-               ▼                                         ▼
-   ┌───────────────────────┐                 ┌───────────────────────┐
-   │ SIMPLE_INVESTIGATION  │                 │      PMKP_REVIEW      │
-   └───────────┬───────────┘                 └───────────┬───────────┘
-               │                                         │
-               │ COMPLETE_INVESTIGATION                  │ FINALIZE_RCA_HANDOFF
-               ▼                                         ▼
-   ┌───────────────────────┐                 ┌───────────────────────┐
-   │   COMPLETED_BY_UNIT   │                 │       COMPLETED       │
-   │       (TERMINAL)      │                 │       (TERMINAL)      │
-   └───────────────────────┘                 └───────────────────────┘
+               ├──────────────────────────────────────────────┐
+               │                                              │
+               │ [BIRU / HIJAU]                               │ [KUNING / MERAH]
+               │ tetap UNDER_REVIEW                           ▼
+               ▼                                  ┌───────────────────────┐
+    ┌───────────────────────────┐                  │      PMKP_REVIEW      │
+    │ SIMPLE INVESTIGATION?     │                  └───────────┬───────────┘
+    └────────────┬──────────────┘                              │
+          YES    │    NO                                      │ FINALIZE_RCA_HANDOFF
+          ▼      │    ▼                                       ▼
+ ┌───────────────────────┐  ┌───────────────────────┐  ┌───────────────────────┐
+ │ SIMPLE_INVESTIGATION  │  │   COMPLETED_BY_UNIT   │  │       COMPLETED       │
+ └───────────┬───────────┘  │       (TERMINAL)      │  │       (TERMINAL)      │
+             │              └───────────────────────┘  └───────────────────────┘
+             │ COMPLETE_INVESTIGATION
+             ▼
+ ┌───────────────────────┐
+ │   COMPLETED_BY_UNIT   │
+ │       (TERMINAL)      │
+ └───────────────────────┘
 ```
 
 ---
@@ -55,10 +61,10 @@ The workflow comprises exactly **8 canonical states**:
 | **`DRAFT`**                | Initial preparation of incident report (Parts I & II).                              | Owning `created_by`                | Private to `created_by` only                              | Yes (only `created_by`)                   | No (draft can be edited directly)             |
 | **`SUBMITTED`**            | Officially submitted report. Form locked. In IBS review queue.                      | Queue of Kepala Ruangan IBS        | All IBS staff (view); Kepala Ruangan (manage)             | No (locked)                               | **Yes** (Kepala Ruangan IBS only)             |
 | **`REVISION_REQUIRED`**    | Returned by Kepala Ruangan for correction.                                          | Owning `created_by`                | All IBS staff (view); `created_by` (edit)                 | Yes (only `created_by`)                   | No (author must resubmit)                     |
-| **`UNDER_REVIEW`**         | Received by Kepala Ruangan; grading and initial analysis in progress.               | Scoped Kepala Ruangan IBS          | All IBS staff (view); Kepala Ruangan (manage)             | No                                        | **Yes** (Kepala Ruangan IBS only)             |
+| **`UNDER_REVIEW`**         | Received by Kepala Ruangan; grading, initial analysis, and the BIRU/HIJAU investigation decision are in progress. | Scoped Kepala Ruangan IBS          | All IBS staff (view); Kepala Ruangan (manage)             | No                                        | **Yes** (Kepala Ruangan IBS only)             |
 | **`SIMPLE_INVESTIGATION`** | Low/Moderate risk (`BIRU`/`HIJAU`). Unit head conducts investigation (Form page 3). | Scoped Kepala Ruangan IBS          | All IBS staff (view); Kepala Ruangan (edit investigation) | **No** (Locked to prevent clinical drift) | **NO** (Strictly forbidden post-entry)        |
 | **`PMKP_REVIEW`**          | High/Extreme risk (`KUNING`/`MERAH`). Oversight review and RCA handoff preparation. | Queue of PMKP & Kepala Ruangan IBS | All IBS staff & PMKP (view); PMKP/Head (finalize)         | **No**                                    | **NO** (Strictly forbidden per Decision #181) |
-| **`COMPLETED_BY_UNIT`**    | Terminal closure for `BIRU`/`HIJAU` simple investigations by Kepala Ruangan IBS.    | Terminal Hospital Archive          | All IBS staff & PMKP (read-only view/export)              | **No (Terminal)**                         | **NO (Terminal)**                             |
+| **`COMPLETED_BY_UNIT`**    | Terminal closure for `BIRU`/`HIJAU`, with a completed Simple Investigation or an explicit decision to finish without one. | Terminal Hospital Archive          | All IBS staff & PMKP (read-only view/export)              | **No (Terminal)**                         | **NO (Terminal)**                             |
 | **`COMPLETED`**            | Terminal closure for `KUNING`/`MERAH` incidents upon external RCA handoff.          | Terminal Hospital Archive          | All IBS staff & PMKP (read-only view/export)              | **No (Terminal)**                         | **NO (Terminal)**                             |
 
 ---
@@ -74,9 +80,11 @@ The workflow comprises exactly **8 canonical states**:
 | `SUBMITTED`                   | `RECEIVE_REPORT`         | `KEPALA_RUANGAN` (IBS)                              | Authenticated active Kepala Ruangan IBS. Acknowledges receipt of report.                                                                                                                                                     | `UNDER_REVIEW`                          | None (status advanced; receipt captured in report)                   |
 | `SUBMITTED` or `UNDER_REVIEW` | `REQUEST_REVISION`       | `KEPALA_RUANGAN` (IBS)                              | Kepala Ruangan requests author to correct/clarify facts. `revision_reason` is optional.                                                                                                                                      | `REVISION_REQUIRED`                     | `REVISION_REQUIRED`                                                  |
 | `REVISION_REQUIRED`           | `RESUBMIT_REPORT`        | Owning `created_by`                                 | User must be `created_by`. Corrects fields; validates all mandatory fields. Advances to `SUBMITTED`.                                                                                                                         | `SUBMITTED`                             | `REPORT_SUBMITTED` (no separate resubmit event)                      |
-| `UNDER_REVIEW`                | `ASSIGN_RISK_GRADE`      | `KEPALA_RUANGAN` (IBS)                              | Manual clinical selection: `BIRU`, `HIJAU`, `KUNING`, `MERAH`. No automatic formula.<br>- If `BIRU` or `HIJAU` -> `SIMPLE_INVESTIGATION`.<br>- If `KUNING` or `MERAH` -> `PMKP_REVIEW` (initial mitigation notes mandatory). | `SIMPLE_INVESTIGATION` or `PMKP_REVIEW` | None (branch dispatch; audited on next action or captured in record) |
+| `UNDER_REVIEW`                | `ASSIGN_RISK_GRADE`      | `KEPALA_RUANGAN` (IBS)                              | Manual clinical selection: `BIRU`, `HIJAU`, `KUNING`, `MERAH`; current `row_version` required.<br>- `BIRU`/`HIJAU`: grade is stored and status remains `UNDER_REVIEW` for the explicit investigation decision.<br>- `KUNING`/`MERAH`: initial mitigation notes mandatory and status advances to `PMKP_REVIEW`. | `UNDER_REVIEW` or `PMKP_REVIEW` | None (grade and routing are captured in the report) |
+| `UNDER_REVIEW` (`BIRU`/`HIJAU`) | `START_SIMPLE_INVESTIGATION` | `KEPALA_RUANGAN` (IBS)                           | Grade must already be `BIRU` or `HIJAU`; current `If-Match` / `row_version` required; creates the single investigation record only after the guarded transition succeeds. | `SIMPLE_INVESTIGATION` | None (minimal audit model has no start event) |
+| `UNDER_REVIEW` (`BIRU`/`HIJAU`) | `COMPLETE_WITHOUT_INVESTIGATION` | `KEPALA_RUANGAN` (IBS)                        | Explicit terminal confirmation; current `If-Match` / `row_version` required; no Simple Investigation record may be created. | `COMPLETED_BY_UNIT` | `REPORT_COMPLETED` |
 | `SUBMITTED` or `UNDER_REVIEW` | `EMERGENCY_CORRECTION`   | `KEPALA_RUANGAN` (IBS)                              | **Actor strictly Kepala Ruangan IBS.** Mandatory reason (1–500 chars). Can modify allowed business fields, including Risk Grade.                                                                                             | Current State                           | `EMERGENCY_CORRECTION`                                               |
-| `SIMPLE_INVESTIGATION`        | `COMPLETE_INVESTIGATION` | `KEPALA_RUANGAN` (IBS)                              | All Form page 3 investigation fields mandatory: causes, recommendations, action plans, start/end dates (`end >= start`). Explicit completion command.                                                                        | `COMPLETED_BY_UNIT`                     | `SIMPLE_INVESTIGATION_COMPLETED`                                     |
+| `SIMPLE_INVESTIGATION`        | `COMPLETE_INVESTIGATION` | `KEPALA_RUANGAN` (IBS)                              | All Form page 3 investigation fields mandatory: causes, recommendations, action plans, start/end dates (`end >= start`). Explicit completion command and current `If-Match` / `row_version`. | `COMPLETED_BY_UNIT` | `SIMPLE_INVESTIGATION_COMPLETED`, then `REPORT_COMPLETED` |
 | `PMKP_REVIEW`                 | `UPDATE_PMKP_REVIEW`     | `KOMITE_PMKP`                                       | Optional review note. Allowed only while `pmkp_reviewed = false`.                                                                                                                                                            | `PMKP_REVIEW`                           | None                                                                 |
 | `PMKP_REVIEW`                 | `FINALIZE_RCA_HANDOFF`   | `KOMITE_PMKP` or `KEPALA_RUANGAN`                   | External RCA handoff confirmed in dialog. Atomically sets `pmkp_reviewed = true` and `REPORT_COMPLETED` audit event. Terminal closure.                                                                                       | `COMPLETED`                             | `REPORT_COMPLETED`                                                   |
 

@@ -5,8 +5,20 @@ import {
   IconCheck,
   IconClockPlay,
   IconEdit,
+  IconPlayerPlay,
 } from "@tabler/icons-react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -20,6 +32,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { RISK_GRADE_META } from "../lib/labels"
+import { needsInvestigationDecision, showsRiskGrading } from "../lib/workflow-view"
 import type { IncidentReport, RiskGrade } from "../types/incident"
 import { cn } from "@/lib/utils"
 
@@ -28,6 +41,8 @@ interface HeadRoomReviewPanelProps {
   onReceive: () => Promise<void>
   onRequestRevision: (reason?: string) => Promise<void>
   onAssignRiskGrade: (grade: RiskGrade, mitigationNotes?: string) => Promise<void>
+  onStartInvestigation: () => Promise<void>
+  onSkipInvestigation: () => Promise<void>
   onOpenEmergencyCorrection: () => void
 }
 
@@ -38,6 +53,8 @@ export function HeadRoomReviewPanel({
   onReceive,
   onRequestRevision,
   onAssignRiskGrade,
+  onStartInvestigation,
+  onSkipInvestigation,
   onOpenEmergencyCorrection,
 }: HeadRoomReviewPanelProps) {
   const [selectedGrade, setSelectedGrade] = useState<RiskGrade>("BIRU")
@@ -45,6 +62,7 @@ export function HeadRoomReviewPanel({
   const [revisionReason, setRevisionReason] = useState("")
   const [showRevisionModal, setShowRevisionModal] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [pendingAction, setPendingAction] = useState<"start" | "skip" | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   const handleReceive = async () => {
@@ -90,6 +108,30 @@ export function HeadRoomReviewPanel({
   }
 
   const needsHighRiskNotes = selectedGrade === "KUNING" || selectedGrade === "MERAH"
+  const showDecision = needsInvestigationDecision(report)
+
+  const handleInvestigationDecision = async (action: "start" | "skip") => {
+    if (pendingAction) return
+    setErrorMsg(null)
+    setPendingAction(action)
+    try {
+      if (action === "start") {
+        await onStartInvestigation()
+      } else {
+        await onSkipInvestigation()
+      }
+    } catch (err) {
+      setErrorMsg(
+        err instanceof Error
+          ? err.message
+          : action === "start"
+            ? "Gagal memulai investigasi sederhana."
+            : "Gagal menyelesaikan laporan tanpa investigasi.",
+      )
+    } finally {
+      setPendingAction(null)
+    }
+  }
 
   return (
     <section
@@ -136,12 +178,12 @@ export function HeadRoomReviewPanel({
       )}
 
       {/* Action 2: Penetapan Grading Risiko jika UNDER_REVIEW */}
-      {report.status === "UNDER_REVIEW" && (
+      {showsRiskGrading(report) && (
         <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Penetapan Pita Grading Risiko</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Biru/Hijau dilanjutkan ke investigasi sederhana unit; Kuning/Merah dieskalasi ke
+              Biru/Hijau dilanjutkan ke pilihan tindak lanjut unit; Kuning/Merah dieskalasi ke
               Komite PMKP.
             </p>
           </div>
@@ -171,7 +213,7 @@ export function HeadRoomReviewPanel({
                     {meta.label}
                   </span>
                   <span className={cn("text-[10px] leading-tight", selected ? "opacity-80" : "text-muted-foreground")}>
-                    {grade === "BIRU" || grade === "HIJAU" ? "Investigasi unit" : "Eskalasi PMKP"}
+                    {grade === "BIRU" || grade === "HIJAU" ? "Keputusan unit" : "Eskalasi PMKP"}
                   </span>
                 </button>
               )
@@ -210,30 +252,106 @@ export function HeadRoomReviewPanel({
               size="sm"
             >
               {isProcessing ? <Spinner data-icon="inline-start" /> : <IconCheck data-icon="inline-start" />}
-              Tetapkan {RISK_GRADE_META[selectedGrade].label} &amp; Lanjutkan
+              Tetapkan {RISK_GRADE_META[selectedGrade].label}
             </Button>
           </div>
         </div>
       )}
 
+      {showDecision && (
+        <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-semibold text-foreground">
+              Apakah laporan ini perlu dilanjutkan ke Investigasi Sederhana?
+            </h3>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Grading {report.risk_grade ? RISK_GRADE_META[report.risk_grade].label : "risiko"}{" "}
+              telah tersimpan. Pilih tindak lanjut berdasarkan kebutuhan penelusuran penyebab dan
+              rencana perbaikan unit.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              className="w-full whitespace-nowrap sm:w-auto"
+              disabled={pendingAction !== null}
+              onClick={() => {
+                void handleInvestigationDecision("start")
+              }}
+            >
+              {pendingAction === "start" ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <IconPlayerPlay data-icon="inline-start" />
+              )}
+              {pendingAction === "start" ? "Memulai…" : "Lanjut ke Investigasi Sederhana"}
+            </Button>
+
+            <AlertDialog>
+              <AlertDialogTrigger
+                disabled={pendingAction !== null}
+                render={
+                  <Button
+                    className="w-full whitespace-normal sm:w-auto sm:whitespace-nowrap"
+                    variant="outline"
+                  />
+                }
+              >
+                Selesaikan Tanpa Investigasi
+              </AlertDialogTrigger>
+              <AlertDialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Selesaikan laporan tanpa investigasi?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Laporan akan ditutup permanen sebagai selesai di tingkat unit tanpa lembar
+                    investigasi. Setelah dikonfirmasi, laporan terkunci dan tidak dapat diedit
+                    melalui alur normal.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={pendingAction !== null}>Batal</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={pendingAction !== null}
+                    onClick={() => {
+                      void handleInvestigationDecision("skip")
+                    }}
+                    variant="destructive"
+                  >
+                    {pendingAction === "skip" && <Spinner data-icon="inline-start" />}
+                    {pendingAction === "skip" ? "Menyelesaikan…" : "Ya, Selesaikan Permanen"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      )}
+
       {/* Action 3: Request Revision & Emergency Correction buttons */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-primary/15 pt-3">
-        <Button
-          disabled={isProcessing}
-          onClick={() => {
-            setShowRevisionModal(true)
-          }}
-          size="sm"
-          variant="outline"
-        >
-          <IconArrowBackUp data-icon="inline-start" />
-          Minta Perbaikan
-        </Button>
-        <Button disabled={isProcessing} onClick={onOpenEmergencyCorrection} size="sm" variant="outline">
-          <IconEdit data-icon="inline-start" />
-          Koreksi Darurat
-        </Button>
-      </div>
+      {!showDecision && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-primary/15 pt-3">
+          <Button
+            disabled={isProcessing}
+            onClick={() => {
+              setShowRevisionModal(true)
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <IconArrowBackUp data-icon="inline-start" />
+            Minta Perbaikan
+          </Button>
+          <Button
+            disabled={isProcessing}
+            onClick={onOpenEmergencyCorrection}
+            size="sm"
+            variant="outline"
+          >
+            <IconEdit data-icon="inline-start" />
+            Koreksi Darurat
+          </Button>
+        </div>
+      )}
 
       {/* Dialog for Revision Request */}
       <Dialog onOpenChange={setShowRevisionModal} open={showRevisionModal}>

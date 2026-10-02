@@ -7,6 +7,7 @@ import { onRequestPost as onAssignRiskGradePost } from "./[id]/assign-risk-grade
 import { onRequestPost as onEmergencyCorrectionPost } from "./[id]/emergency-correction"
 import { onRequestPut as onInvestigationPut } from "./[id]/investigation"
 import { onRequestPost as onCompleteInvestigationPost } from "./[id]/investigation/complete"
+import { onRequestPost as onStartInvestigationPost } from "./[id]/investigation/start"
 import { onRequestPut as onPmkpReviewPut } from "./[id]/pmkp-review"
 import { onRequestPost as onFinalizePmkpPost } from "./[id]/pmkp-review/finalize"
 import { onRequestPost as onReceivePost } from "./[id]/receive"
@@ -236,6 +237,54 @@ function createE2eDatabase() {
             return { meta: { changes: 1 } }
           }
           if (sql.includes("UPDATE incident_reports SET")) {
+            // Guarded updates: WHERE id=? AND row_version=? AND status=<literal>
+            const hasVersionGuard =
+              sql.includes("AND row_version = ?") || sql.includes("AND row_version=?")
+            const guardedOnUnderReview =
+              hasVersionGuard &&
+              (sql.includes("AND status = 'UNDER_REVIEW'") ||
+                sql.includes("AND status='UNDER_REVIEW'"))
+            const guardedOnSimpleInv =
+              hasVersionGuard &&
+              (sql.includes("AND status = 'SIMPLE_INVESTIGATION'") ||
+                sql.includes("AND status='SIMPLE_INVESTIGATION'"))
+
+            if (guardedOnUnderReview || guardedOnSimpleInv) {
+              const id = boundParams[boundParams.length - 2] as string
+              const expectedVer = boundParams[boundParams.length - 1] as number
+              const inc = incidents.get(id)
+              const requiredStatus = guardedOnUnderReview ? "UNDER_REVIEW" : "SIMPLE_INVESTIGATION"
+
+              if (!inc || inc.row_version !== expectedVer || inc.status !== requiredStatus) {
+                return { meta: { changes: 0 } }
+              }
+
+              if (sql.includes("risk_grade = ?")) {
+                inc.status = boundParams[0]
+                inc.risk_grade = boundParams[1]
+                inc.risk_graded_at = boundParams[2]
+                inc.high_risk_mitigation_notes = boundParams[3]
+                inc.row_version = boundParams[4]
+                inc.updated_at = boundParams[5]
+              } else if (guardedOnUnderReview && sql.includes("status = 'SIMPLE_INVESTIGATION'")) {
+                inc.status = "SIMPLE_INVESTIGATION"
+                inc.row_version = boundParams[0]
+                inc.updated_at = boundParams[1]
+              } else if (guardedOnUnderReview && sql.includes("status = 'COMPLETED_BY_UNIT'")) {
+                inc.status = "COMPLETED_BY_UNIT"
+                inc.completed_at = boundParams[0]
+                inc.row_version = boundParams[1]
+                inc.updated_at = boundParams[2]
+              } else if (guardedOnSimpleInv && sql.includes("status = 'COMPLETED_BY_UNIT'")) {
+                inc.status = "COMPLETED_BY_UNIT"
+                inc.completed_at = boundParams[0]
+                inc.row_version = boundParams[1]
+                inc.updated_at = boundParams[2]
+              }
+
+              return { meta: { changes: 1 } }
+            }
+
             const id = boundParams[boundParams.length - 1] as string
             const inc = incidents.get(id)
             if (inc) {
@@ -389,6 +438,36 @@ function createE2eDatabase() {
             }
             return { meta: { changes: 1 } }
           }
+          if (sql.includes("INSERT INTO audit_records") && sql.includes("SELECT") && sql.includes("WHERE EXISTS")) {
+            const guardIncidentId = boundParams[boundParams.length - 2] as string
+            const guardVersion = boundParams[boundParams.length - 1] as number
+            const inc = incidents.get(guardIncidentId)
+            const existsOk =
+              inc !== undefined &&
+              inc.row_version === guardVersion &&
+              (inc.status === "COMPLETED_BY_UNIT" || inc.status === "SIMPLE_INVESTIGATION")
+            if (!existsOk) return { meta: { changes: 0 } }
+            let eventType: string
+            if (sql.includes("'SIMPLE_INVESTIGATION_COMPLETED'")) {
+              eventType = "SIMPLE_INVESTIGATION_COMPLETED"
+            } else if (sql.includes("'REPORT_COMPLETED'")) {
+              eventType = "REPORT_COMPLETED"
+            } else {
+              eventType = boundParams[2] as string
+            }
+            auditRecords.push({
+              id: boundParams[0],
+              incident_id: boundParams[1],
+              event_type: eventType,
+              actor_user_id: boundParams[2],
+              actor_name: boundParams[3],
+              actor_role: boundParams[4],
+              occurred_at_utc: boundParams[5],
+              notes: boundParams[6],
+              request_id: boundParams[7],
+            })
+            return { meta: { changes: 1 } }
+          }
           if (sql.includes("INSERT INTO audit_records")) {
             auditRecords.push({
               id: boundParams[0],
@@ -400,6 +479,31 @@ function createE2eDatabase() {
               occurred_at_utc: boundParams[6],
               notes: boundParams[7],
               request_id: boundParams[8],
+            })
+            return { meta: { changes: 1 } }
+          }
+          if (
+            (sql.includes("INSERT OR IGNORE INTO simple_investigations") ||
+              sql.includes("INSERT INTO simple_investigations")) &&
+            sql.includes("SELECT") &&
+            sql.includes("WHERE EXISTS")
+          ) {
+            const incidentId = boundParams[1] as string
+            const guardIncidentId = boundParams[boundParams.length - 2] as string
+            const guardVersion = boundParams[boundParams.length - 1] as number
+            const inc = incidents.get(guardIncidentId)
+            const existsOk =
+              inc !== undefined &&
+              inc.row_version === guardVersion &&
+              inc.status === "SIMPLE_INVESTIGATION"
+            if (!existsOk || investigations.has(incidentId)) return { meta: { changes: 0 } }
+            investigations.set(incidentId, {
+              id: boundParams[0],
+              incident_id: incidentId,
+              recommendations: "[]",
+              actions: "[]",
+              created_at: boundParams[2],
+              updated_at: boundParams[3],
             })
             return { meta: { changes: 1 } }
           }
@@ -425,6 +529,28 @@ function createE2eDatabase() {
                 existing.recommendations = boundParams[6]
                 existing.actions = boundParams[7]
               }
+            }
+            return { meta: { changes: 1 } }
+          }
+          if (
+            sql.includes("UPDATE simple_investigations") &&
+            sql.includes("completed_by_user_id") &&
+            sql.includes("EXISTS")
+          ) {
+            const incidentId = boundParams[3] as string
+            const guardIncidentId = boundParams[4] as string
+            const guardVersion = boundParams[5] as number
+            const inc = incidents.get(guardIncidentId)
+            const existsOk =
+              inc !== undefined &&
+              inc.row_version === guardVersion &&
+              inc.status === "COMPLETED_BY_UNIT"
+            if (!existsOk) return { meta: { changes: 0 } }
+            const inv = investigations.get(incidentId)
+            if (inv) {
+              inv.completed_by_user_id = boundParams[0]
+              inv.completed_at = boundParams[1]
+              inv.updated_at = boundParams[2]
             }
             return { meta: { changes: 1 } }
           }
@@ -745,12 +871,12 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
       row_version: 1,
     })
 
-    // Assign HIJAU -> routes to SIMPLE_INVESTIGATION
+    // Step 1: Assign HIJAU → stays UNDER_REVIEW (grade saved), requires If-Match
     const gradeRes = await callHandler(
       onAssignRiskGradePost,
       new Request("https://example.test/api/incidents/inc_hi/assign-risk-grade", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
         body: JSON.stringify({ risk_grade: "HIJAU" }),
       }),
       db,
@@ -758,7 +884,25 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
       { id: "inc_hi" },
     )
     expect(gradeRes.status).toBe(200)
+    expect(incidents.get("inc_hi")?.status).toBe("UNDER_REVIEW")
+    expect(incidents.get("inc_hi")?.risk_grade).toBe("HIJAU")
+    // No investigation row yet
+    expect(investigations.has("inc_hi")).toBe(false)
+
+    // Step 2: Start investigation → SIMPLE_INVESTIGATION + investigation row created
+    const startRes = await callHandler(
+      onStartInvestigationPost,
+      new Request("https://example.test/api/incidents/inc_hi/investigation/start", {
+        method: "POST",
+        headers: { "If-Match": '"W/2"' },
+      }),
+      db,
+      { requestId: "req_hi1b", auth: headroomActor },
+      { id: "inc_hi" },
+    )
+    expect(startRes.status).toBe(200)
     expect(incidents.get("inc_hi")?.status).toBe("SIMPLE_INVESTIGATION")
+    expect(investigations.has("inc_hi")).toBe(true)
 
     // Complete valid investigation
     await callHandler(
@@ -796,6 +940,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
       onCompleteInvestigationPost,
       new Request("https://example.test/api/incidents/inc_hi/investigation/complete", {
         method: "POST",
+        headers: { "If-Match": '"W/3"' },
       }),
       db,
       { requestId: "req_hi3", auth: headroomActor },
@@ -836,7 +981,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
       onAssignRiskGradePost,
       new Request("https://example.test/api/incidents/inc_j/assign-risk-grade", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "If-Match": '"W/1"' },
         body: JSON.stringify({
           risk_grade: "KUNING",
           high_risk_mitigation_notes: "Segera laporkan ke DPJP dan isolasi alat",
