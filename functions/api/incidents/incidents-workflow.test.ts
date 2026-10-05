@@ -191,6 +191,7 @@ function createInMemoryD1() {
         },
         async run() {
           if (sql.includes("INSERT INTO incident_reports")) {
+            expect(boundParams).toHaveLength((sql.match(/\?/g) ?? []).length)
             const id = boundParams[0] as string
             const record: Record<string, unknown> = {
               id,
@@ -213,20 +214,21 @@ function createInMemoryD1() {
               incident_type: boundParams[14],
               initial_reporter_category: boundParams[15],
               initial_reporter_detail: boundParams[16],
-              incident_target: boundParams[17],
-              incident_target_other: boundParams[18],
-              patient_care_type: boundParams[19],
-              incident_location: boundParams[20],
-              clinical_specialization: boundParams[21],
-              causing_unit: boundParams[22],
-              patient_impact: boundParams[23],
-              immediate_action_and_result: boundParams[24],
-              action_taken_by: boundParams[25],
-              similar_incident_occurred: boundParams[26],
-              similar_incident_details: boundParams[27],
+              initial_reporters: boundParams[17],
+              incident_target: boundParams[18],
+              incident_target_other: boundParams[19],
+              patient_care_type: boundParams[20],
+              incident_location: boundParams[21],
+              clinical_specialization: boundParams[22],
+              causing_unit: boundParams[23],
+              patient_impact: boundParams[24],
+              immediate_action_and_result: boundParams[25],
+              action_taken_by: boundParams[26],
+              similar_incident_occurred: boundParams[27],
+              similar_incident_details: boundParams[28],
               row_version: 1,
-              created_at: boundParams[28],
-              updated_at: boundParams[29],
+              created_at: boundParams[29],
+              updated_at: boundParams[30],
               report_number: null,
               submitted_at: null,
               completed_at: null,
@@ -311,8 +313,11 @@ function createInMemoryD1() {
                 existing.submitted_at = boundParams[1]
                 existing.sla_deadline_utc = boundParams[2]
                 existing.is_overdue_sla = boundParams[3]
-                existing.row_version = boundParams[4]
-                existing.updated_at = boundParams[5]
+                existing.initial_reporters = boundParams[4]
+                existing.initial_reporter_category = boundParams[5]
+                existing.initial_reporter_detail = boundParams[6]
+                existing.row_version = boundParams[7]
+                existing.updated_at = boundParams[8]
               } else if (sql.includes("status = 'UNDER_REVIEW'")) {
                 existing.status = "UNDER_REVIEW"
                 existing.received_by_user_id = boundParams[0]
@@ -363,20 +368,21 @@ function createInMemoryD1() {
                 existing.incident_type = boundParams[12]
                 existing.initial_reporter_category = boundParams[13]
                 existing.initial_reporter_detail = boundParams[14]
-                existing.incident_target = boundParams[15]
-                existing.incident_target_other = boundParams[16]
-                existing.patient_care_type = boundParams[17]
-                existing.incident_location = boundParams[18]
-                existing.clinical_specialization = boundParams[19]
-                existing.causing_unit = boundParams[20]
-                existing.patient_impact = boundParams[21]
-                existing.immediate_action_and_result = boundParams[22]
-                existing.action_taken_by = boundParams[23]
-                existing.similar_incident_occurred = boundParams[24]
-                existing.similar_incident_details = boundParams[25]
-                existing.overdue_reason = boundParams[26]
-                existing.row_version = boundParams[27]
-                existing.updated_at = boundParams[28]
+                existing.initial_reporters = boundParams[15]
+                existing.incident_target = boundParams[16]
+                existing.incident_target_other = boundParams[17]
+                existing.patient_care_type = boundParams[18]
+                existing.incident_location = boundParams[19]
+                existing.clinical_specialization = boundParams[20]
+                existing.causing_unit = boundParams[21]
+                existing.patient_impact = boundParams[22]
+                existing.immediate_action_and_result = boundParams[23]
+                existing.action_taken_by = boundParams[24]
+                existing.similar_incident_occurred = boundParams[25]
+                existing.similar_incident_details = boundParams[26]
+                existing.overdue_reason = boundParams[27]
+                existing.row_version = boundParams[28]
+                existing.updated_at = boundParams[29]
               } else if (sql.includes("patient_name = ?, medical_record_number = ?")) {
                 // Emergency correction
                 existing.patient_name = boundParams[0]
@@ -392,20 +398,21 @@ function createInMemoryD1() {
                 existing.incident_type = boundParams[10]
                 existing.initial_reporter_category = boundParams[11]
                 existing.initial_reporter_detail = boundParams[12]
-                existing.incident_target = boundParams[13]
-                existing.incident_target_other = boundParams[14]
-                existing.patient_care_type = boundParams[15]
-                existing.incident_location = boundParams[16]
-                existing.clinical_specialization = boundParams[17]
-                existing.causing_unit = boundParams[18]
-                existing.patient_impact = boundParams[19]
-                existing.immediate_action_and_result = boundParams[20]
-                existing.action_taken_by = boundParams[21]
-                existing.similar_incident_occurred = boundParams[22]
-                existing.overdue_reason = boundParams[23]
-                existing.risk_grade = boundParams[24]
-                existing.row_version = boundParams[25]
-                existing.updated_at = boundParams[26]
+                existing.initial_reporters = boundParams[13]
+                existing.incident_target = boundParams[14]
+                existing.incident_target_other = boundParams[15]
+                existing.patient_care_type = boundParams[16]
+                existing.incident_location = boundParams[17]
+                existing.clinical_specialization = boundParams[18]
+                existing.causing_unit = boundParams[19]
+                existing.patient_impact = boundParams[20]
+                existing.immediate_action_and_result = boundParams[21]
+                existing.action_taken_by = boundParams[22]
+                existing.similar_incident_occurred = boundParams[23]
+                existing.overdue_reason = boundParams[24]
+                existing.risk_grade = boundParams[25]
+                existing.row_version = boundParams[26]
+                existing.updated_at = boundParams[27]
               }
               return { meta: { changes: 1 } }
             }
@@ -456,6 +463,16 @@ function createInMemoryD1() {
               snap.incident_type = boundParams[3]
               snap.overdue_reason = boundParams[4]
               snap.updated_at = boundParams[5]
+              if (sql.includes("snapshot_data = json_set")) {
+                const snapshotData: unknown = JSON.parse(snap.snapshot_data as string)
+                const reporters: unknown = JSON.parse(boundParams[6] as string)
+                snap.snapshot_data = JSON.stringify({
+                  ...(snapshotData as Record<string, unknown>),
+                  initial_reporters: reporters,
+                  initial_reporter_category: boundParams[7],
+                  initial_reporter_detail: boundParams[8],
+                })
+              }
             }
             return { meta: { changes: 1 } }
           }
@@ -466,7 +483,11 @@ function createInMemoryD1() {
           // params layout: [id, incidentId, actorId, actorName, actorRole, ts, notes, reqId, incidentId(guard), nextVersion(guard)]
           // The conditional form uses SELECT + WHERE EXISTS rather than VALUES.
           // ----------------------------------------------------------------
-          if (sql.includes("INSERT INTO audit_records") && sql.includes("SELECT") && sql.includes("WHERE EXISTS")) {
+          if (
+            sql.includes("INSERT INTO audit_records") &&
+            sql.includes("SELECT") &&
+            sql.includes("WHERE EXISTS")
+          ) {
             // Extract the guard params: incidentId is at boundParams.length-2, nextVersion at boundParams.length-1
             const guardIncidentId = boundParams[boundParams.length - 2] as string
             const guardVersion = boundParams[boundParams.length - 1] as number
@@ -651,6 +672,368 @@ function createInMemoryD1() {
 }
 
 describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
+  it.each([
+    { initial_reporters: [] },
+    { initial_reporters: null },
+    { initial_reporters: [{ name: "", category: "Perawat" }] },
+    { initial_reporters: [{ name: "Maria", category: " " }] },
+    {
+      initial_reporters: [
+        { name: "Maria", category: "Perawat" },
+        { name: " ", category: "Dokter" },
+      ],
+    },
+  ])(
+    "rejects incomplete explicit reporters in emergency correction: $initial_reporters",
+    async ({ initial_reporters }) => {
+      const { db, incidents, snapshots, auditRecords } = createInMemoryD1()
+      const report = {
+        id: "inc_invalid_correction",
+        status: "SUBMITTED",
+        owning_unit_id: "IBS",
+        row_version: 1,
+      }
+      const snapshot = {
+        snapshot_data: JSON.stringify({ submitted_by: { id: nakesActor.user.id } }),
+      }
+      incidents.set(report.id, { ...report })
+      snapshots.set(report.id, { ...snapshot })
+      const response = await callHandler(
+        onEmergencyCorrectionPost,
+        new Request(`https://example.test/api/incidents/${report.id}/emergency-correction`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "Koreksi pelapor", fields: { initial_reporters } }),
+        }),
+        db,
+        { requestId: "req_invalid_correction", auth: headroomActor },
+        { id: report.id },
+      )
+      expect(response.status).toBe(400)
+      const problem: { code: string } = await response.json()
+      expect(problem.code).toBe("INVALID_REPORTERS")
+      expect(incidents.get(report.id)).toEqual(report)
+      expect(snapshots.get(report.id)).toEqual(snapshot)
+      expect(auditRecords).toHaveLength(0)
+    },
+  )
+
+  it.each([false, true])(
+    "syncs legacy reporters into snapshot without materializing report JSON, scalar edit=%s",
+    async (editScalars) => {
+      const { db, incidents, snapshots } = createInMemoryD1()
+      const id = "inc_legacy_correction"
+      incidents.set(id, {
+        id,
+        status: "SUBMITTED",
+        owning_unit_id: "IBS",
+        row_version: 1,
+        initial_reporters: null,
+        initial_reporter_category: "Perawat",
+        initial_reporter_detail: "IBS",
+      })
+      const originalSnapshot = {
+        submitted_by: { id: nakesActor.user.id, role: nakesActor.user.role },
+        submitted_at: "2026-09-26T08:00:00.000Z",
+        chronology: "Original",
+      }
+      snapshots.set(id, { snapshot_data: JSON.stringify(originalSnapshot) })
+      const response = await callHandler(
+        onEmergencyCorrectionPost,
+        new Request(`https://example.test/api/incidents/${id}/emergency-correction`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Koreksi scalar legacy",
+            fields: editScalars
+              ? { initial_reporter_category: "Dokter", initial_reporter_detail: "Dokter IBS" }
+              : { medical_record_number: "MR-123" },
+          }),
+        }),
+        db,
+        { requestId: "req_legacy_correction", auth: headroomActor },
+        { id },
+      )
+      expect(response.status).toBe(200)
+      expect(incidents.get(id)?.initial_reporters).toBeNull()
+      const snapshot = snapshots.get(id)
+      if (!snapshot || typeof snapshot.snapshot_data !== "string")
+        throw new Error("Snapshot missing")
+      const snapshotData: unknown = JSON.parse(snapshot.snapshot_data)
+      const category = editScalars ? "Dokter" : "Perawat"
+      const detail = editScalars ? "Dokter IBS" : "IBS"
+      expect(snapshotData).toEqual({
+        ...originalSnapshot,
+        initial_reporters: [{ name: "", category, detail }],
+        initial_reporter_category: category,
+        initial_reporter_detail: detail,
+      })
+      expect(snapshotData).not.toHaveProperty("severity_reference")
+    },
+  )
+
+  it.each(["not JSON", "null", "[]"])(
+    "preserves malformed snapshot %s and refuses all correction writes",
+    async (snapshot_data) => {
+      const { db, incidents, snapshots, auditRecords } = createInMemoryD1()
+      const report = {
+        id: "inc_bad_snapshot",
+        status: "SUBMITTED",
+        owning_unit_id: "IBS",
+        row_version: 1,
+      }
+      incidents.set(report.id, { ...report })
+      snapshots.set(report.id, { snapshot_data })
+      const response = await callHandler(
+        onEmergencyCorrectionPost,
+        new Request(`https://example.test/api/incidents/${report.id}/emergency-correction`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason: "Koreksi pelapor",
+            fields: {
+              initial_reporters: [{ name: "Maria", category: "Perawat", detail: "IBS" }],
+            },
+          }),
+        }),
+        db,
+        { requestId: "req_bad_snapshot", auth: headroomActor },
+        { id: report.id },
+      )
+      expect(response.status).toBe(409)
+      const problem: { code: string } = await response.json()
+      expect(problem.code).toBe("INVALID_SUBMISSION_SNAPSHOT")
+      expect(incidents.get(report.id)).toEqual(report)
+      expect(snapshots.get(report.id)).toEqual({ snapshot_data })
+      expect(auditRecords).toHaveLength(0)
+    },
+  )
+
+  it.each([
+    { initial_reporters: null, expectedStatus: 200 },
+    { initial_reporters: JSON.stringify([{ name: "", category: "Perawat" }]), expectedStatus: 422 },
+    {
+      initial_reporters: JSON.stringify([
+        { name: "Maria", category: "Perawat" },
+        { name: " ", category: "Dokter" },
+      ]),
+      expectedStatus: 422,
+    },
+    { initial_reporters: "[]", expectedStatus: 422 },
+    { initial_reporters: "null", expectedStatus: 422 },
+    { initial_reporters: "not JSON", expectedStatus: 422 },
+  ])(
+    "submit validates stored reporters $initial_reporters without treating JSON as legacy",
+    async ({ initial_reporters, expectedStatus }) => {
+      const { db, incidents, snapshots, auditRecords } = createInMemoryD1()
+      const id = "inc_reporter_validation"
+      incidents.set(id, {
+        id,
+        status: "DRAFT",
+        created_by_user_id: nakesActor.user.id,
+        owning_unit_id: "IBS",
+        reporter_name: "Ns. Maria",
+        reporter_role: "Perawat Bedah",
+        patient_name: "Tn. Yohanes",
+        medical_record_number: "MR-12345",
+        patient_room: "Kamar Operasi 1",
+        patient_age_category: ">30_65_tahun",
+        patient_gender: "LAKI_LAKI",
+        patient_payer_type: "BPJS Kesehatan",
+        admission_datetime: "2026-09-25T08:00:00.000Z",
+        incident_datetime: "2026-09-26T08:00:00.000Z",
+        incident_title: "Ketidaksesuaian hitungan kassa",
+        chronology: "Kassa dihitung ulang sebelum penutupan luka.",
+        incident_type: "KNC",
+        initial_reporter_category: "Perawat",
+        initial_reporter_detail: null,
+        initial_reporters,
+        incident_target: "PASIEN",
+        incident_location: "Kamar Operasi 1",
+        clinical_specialization: "Bedah Umum",
+        causing_unit: "IBS",
+        patient_impact: "Tidak Ada Cedera",
+        immediate_action_and_result: "Dihitung ulang",
+        action_taken_by: "Tim Bedah",
+        similar_incident_occurred: "TIDAK",
+        row_version: 1,
+      })
+      const response = await callHandler(
+        onSubmitPost,
+        new Request(`https://example.test/api/incidents/${id}/submit`, { method: "POST" }),
+        db,
+        { requestId: "req_reporter_validation", auth: nakesActor },
+        { id },
+      )
+      expect(response.status).toBe(expectedStatus)
+      if (expectedStatus === 422) {
+        const problem: { code: string; errors: Array<{ path: string }> } = await response.json()
+        expect(problem.code).toBe("MANDATORY_FIELDS_INCOMPLETE")
+        expect(problem.errors.some((error) => error.path.startsWith("initial_reporters"))).toBe(
+          true,
+        )
+        expect(incidents.get(id)?.status).toBe("DRAFT")
+        expect(snapshots.size).toBe(0)
+        expect(auditRecords).toHaveLength(0)
+      } else {
+        expect(incidents.get(id)?.initial_reporters).toBeNull()
+        expect(snapshots.has(id)).toBe(true)
+      }
+    },
+  )
+
+  it("roundtrips multiple reporters through create, patch, reads, submission snapshot, and emergency correction", async () => {
+    const { db, incidents, snapshots } = createInMemoryD1()
+    const reporters = [
+      { name: "Ns. Maria", category: "Karyawan: Perawat", detail: "Perawat IBS" },
+      { name: "dr. Anton", category: "Karyawan: Dokter", detail: null },
+    ]
+    const data: RequestContextData = { requestId: "req_reporters", auth: nakesActor }
+    const createRes = await callHandler(
+      onIncidentsCreatePost,
+      new Request("https://example.test/api/incidents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reporter_name: "Ns. Maria",
+          reporter_role: "Perawat Bedah",
+          incident_datetime: "2026-09-26T08:00:00.000Z",
+          incident_type: "KNC",
+          initial_reporters: reporters,
+          patient_name: "Tn. Yohanes B",
+          medical_record_number: "MR-98765",
+          patient_room: "Kamar Operasi 1",
+          patient_age_category: ">30_65_tahun",
+          patient_gender: "LAKI_LAKI",
+          patient_payer_type: "BPJS Kesehatan",
+          admission_datetime: "2026-09-25T08:00:00.000Z",
+          incident_title: "Ketidaksesuaian hitungan kassa",
+          chronology: "Kassa dihitung ulang sebelum penutupan luka.",
+          incident_target: "PASIEN",
+          incident_location: "Kamar Operasi 1",
+          clinical_specialization: "Bedah Umum",
+          causing_unit: "Instalasi Bedah Sentral (IBS)",
+          patient_impact: "Tidak Ada Cedera",
+          immediate_action_and_result: "Dihitung ulang sebelum penutupan rongga abdomen",
+          action_taken_by: "Tim Bedah",
+          similar_incident_occurred: "TIDAK",
+        }),
+      }),
+      db,
+      data,
+    )
+    expect(createRes.status).toBe(201)
+    const created: { data: { id: string; initial_reporters: string } } = await createRes.json()
+    expect(JSON.parse(created.data.initial_reporters)).toEqual(reporters)
+    const id = created.data.id
+    const updatedReporters = [
+      { name: "dr. Anton", category: "Karyawan: Dokter", detail: "Dokter IBS" },
+      ...reporters.slice(0, 1),
+      { name: "Yohanes", category: "Keluarga / Pendamping Pasien", detail: null },
+    ]
+    const patchRes = await callHandler(
+      onIncidentPatch,
+      new Request(`https://example.test/api/incidents/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initial_reporters: updatedReporters }),
+      }),
+      db,
+      data,
+      { id },
+    )
+    expect(patchRes.status).toBe(200)
+    const patched: { data: { initial_reporters: string } } = await patchRes.json()
+    expect(JSON.parse(patched.data.initial_reporters)).toEqual(updatedReporters)
+    expect(incidents.get(id)).toMatchObject({
+      initial_reporter_category: "Karyawan: Dokter",
+      initial_reporter_detail: "Dokter IBS",
+      incident_target: "PASIEN",
+      row_version: 2,
+    })
+
+    const detailRes = await callHandler(
+      onIncidentGet,
+      new Request(`https://example.test/api/incidents/${id}`),
+      db,
+      data,
+      { id },
+    )
+    expect(detailRes.status).toBe(200)
+    const detail: { data: { initial_reporters: string } } = await detailRes.json()
+    expect(JSON.parse(detail.data.initial_reporters)).toEqual(updatedReporters)
+    const listRes = await callHandler(
+      onIncidentsListGet,
+      new Request("https://example.test/api/incidents"),
+      db,
+      data,
+    )
+    expect(listRes.status).toBe(200)
+    const list: { data: Array<{ id: string; initial_reporters: string }> } = await listRes.json()
+    const listedReport = list.data.find((report) => report.id === id)
+    if (!listedReport) throw new Error("Created report missing from list")
+    expect(JSON.parse(listedReport.initial_reporters)).toEqual(updatedReporters)
+
+    const submitRes = await callHandler(
+      onSubmitPost,
+      new Request(`https://example.test/api/incidents/${id}/submit`, { method: "POST" }),
+      db,
+      data,
+      { id },
+    )
+    expect(submitRes.status).toBe(200)
+    const submitted: { data: { initial_reporters: string; row_version: number } } =
+      await submitRes.json()
+    expect(JSON.parse(submitted.data.initial_reporters)).toEqual(updatedReporters)
+    expect(submitted.data.row_version).toBe(3)
+    const snapshot = snapshots.get(id)
+    expect(snapshot).toBeDefined()
+    if (!snapshot || typeof snapshot.snapshot_data !== "string") {
+      throw new Error("Submission snapshot missing")
+    }
+    const snapshotData: unknown = JSON.parse(snapshot.snapshot_data)
+    expect(snapshotData).toMatchObject({
+      initial_reporters: updatedReporters,
+      initial_reporter_category: "Karyawan: Dokter",
+    })
+
+    const correctionRes = await callHandler(
+      onEmergencyCorrectionPost,
+      new Request(`https://example.test/api/incidents/${id}/emergency-correction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: "Perbaikan urutan pelapor awal",
+          fields: { initial_reporters: reporters },
+        }),
+      }),
+      db,
+      { requestId: "req_reporters_correction", auth: headroomActor },
+      { id },
+    )
+    expect(correctionRes.status).toBe(200)
+    const corrected: { data: { initial_reporters: string } } = await correctionRes.json()
+    expect(JSON.parse(corrected.data.initial_reporters)).toEqual(reporters)
+    expect(incidents.get(id)).toMatchObject({
+      initial_reporter_category: "Karyawan: Perawat",
+      initial_reporter_detail: "Perawat IBS",
+      incident_target: "PASIEN",
+      row_version: 4,
+    })
+    const correctedSnapshot = snapshots.get(id)
+    if (!correctedSnapshot || typeof correctedSnapshot.snapshot_data !== "string") {
+      throw new Error("Corrected submission snapshot missing")
+    }
+    const correctedSnapshotData: unknown = JSON.parse(correctedSnapshot.snapshot_data)
+    expect(correctedSnapshotData).toEqual({
+      ...(snapshotData as Record<string, unknown>),
+      initial_reporters: reporters,
+      initial_reporter_category: "Karyawan: Perawat",
+      initial_reporter_detail: "Perawat IBS",
+    })
+    expect(correctedSnapshotData).not.toHaveProperty("severity_reference")
+  })
+
   it("creates a persistent draft when minimum condition is met and generates DRAFT_CREATED audit", async () => {
     const { db, auditRecords } = createInMemoryD1()
     const request = new Request("https://example.test/api/incidents", {
@@ -865,7 +1248,9 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
 
     expect(response.status).toBe(200)
     expect(incidents.has("inc_completed_admin_delete")).toBe(false)
-    expect(auditRecords.filter((record) => record.incident_id === "inc_completed_admin_delete")).toHaveLength(0)
+    expect(
+      auditRecords.filter((record) => record.incident_id === "inc_completed_admin_delete"),
+    ).toHaveLength(0)
   })
 
   it("enforces mandatory validation on submit and successfully submits complete report", async () => {
@@ -1116,6 +1501,7 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     })
     snapshots.set("inc_corr_test", {
       incident_id: "inc_corr_test",
+      snapshot_data: JSON.stringify({ submitted_by: { id: nakesActor.user.id } }),
       patient_name: "Original Name",
       medical_record_number: "EMERGENCY-001",
     })
@@ -1808,33 +2194,30 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     expect(investigations.has("inc_biru_full")).toBe(true)
 
     // 2. Fill investigation data
-    const fillReq = new Request(
-      "https://example.test/api/incidents/inc_biru_full/investigation",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          direct_cause: "Komunikasi serah terima instrumen bedah terputus",
-          underlying_root_cause: "SOP sign-out kamar operasi belum diterapkan secara disiplin",
-          investigation_start_date: "2026-09-26",
-          investigation_end_date: "2026-09-28",
-          recommendations: [
-            {
-              text: "Sosialisasi ulang surgical safety checklist",
-              responsible: "Kepala Ruangan IBS",
-              target_date: "2026-10-05",
-            },
-          ],
-          actions: [
-            {
-              text: "Audit berkala kepatuhan checklist keselamatan bedah",
-              responsible: "Perawat Pengendali Mutu",
-              target_date: "2026-10-10",
-            },
-          ],
-        }),
-      },
-    )
+    const fillReq = new Request("https://example.test/api/incidents/inc_biru_full/investigation", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        direct_cause: "Komunikasi serah terima instrumen bedah terputus",
+        underlying_root_cause: "SOP sign-out kamar operasi belum diterapkan secara disiplin",
+        investigation_start_date: "2026-09-26",
+        investigation_end_date: "2026-09-28",
+        recommendations: [
+          {
+            text: "Sosialisasi ulang surgical safety checklist",
+            responsible: "Kepala Ruangan IBS",
+            target_date: "2026-10-05",
+          },
+        ],
+        actions: [
+          {
+            text: "Audit berkala kepatuhan checklist keselamatan bedah",
+            responsible: "Perawat Pengendali Mutu",
+            target_date: "2026-10-10",
+          },
+        ],
+      }),
+    })
     const fillRes = await callHandler(
       onInvestigationPut,
       fillReq,
@@ -2199,7 +2582,9 @@ describe("Incident Reporting & Core Workflow End-to-End Suite", () => {
     expect(second.status).toBe(403)
 
     // Exactly 2 audit records: SIMPLE_INVESTIGATION_COMPLETED + REPORT_COMPLETED (no duplicates)
-    expect(auditRecords.filter((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED")).toHaveLength(1)
+    expect(
+      auditRecords.filter((a) => a.event_type === "SIMPLE_INVESTIGATION_COMPLETED"),
+    ).toHaveLength(1)
     expect(auditRecords.filter((a) => a.event_type === "REPORT_COMPLETED")).toHaveLength(1)
   })
 

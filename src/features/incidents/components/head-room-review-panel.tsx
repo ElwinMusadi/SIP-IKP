@@ -35,6 +35,7 @@ import { RISK_GRADE_META } from "../lib/labels"
 import { needsInvestigationDecision, showsRiskGrading } from "../lib/workflow-view"
 import type { IncidentReport, RiskGrade } from "../types/incident"
 import { cn } from "@/lib/utils"
+import { SeverityReference } from "./severity-reference"
 
 interface HeadRoomReviewPanelProps {
   report: IncidentReport
@@ -187,6 +188,8 @@ export function HeadRoomReviewPanel({
               Komite PMKP.
             </p>
           </div>
+
+          <SeverityReference />
 
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4" role="radiogroup" aria-label="Pita grading risiko">
             {GRADE_ORDER.map((grade) => {

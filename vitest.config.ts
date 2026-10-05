@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "functions/**/*.test.ts", "test-support/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}", "functions/**/*.test.ts", "test-support/**/*.test.ts"],
     environment: "node",
     fileParallelism: false,
     testTimeout: 30000,

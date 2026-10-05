@@ -1,11 +1,13 @@
-import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form"
+import type { Control, FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form"
 
 import { FormSection } from "@/components/shared/form-section"
 import type { IncidentFormData } from "../schemas/incident-form-schema"
 import type { MasterDataPayload } from "../types/incident"
 import { DateField, SelectField, TextAreaField, TextField } from "./form-controls"
+import { InitialReportersFields } from "./initial-reporters-fields"
 
 interface FormSectionIncidentProps {
+  control: Control<IncidentFormData>
   register: UseFormRegister<IncidentFormData>
   errors: FieldErrors<IncidentFormData>
   watch: UseFormWatch<IncidentFormData>
@@ -13,16 +15,6 @@ interface FormSectionIncidentProps {
   disabled?: boolean
   setValue: UseFormSetValue<IncidentFormData>
 }
-
-const INITIAL_REPORTER_CATEGORIES = [
-  "Karyawan: Dokter",
-  "Karyawan: Perawat",
-  "Karyawan: Petugas Lainnya",
-  "Pasien",
-  "Keluarga / Pendamping Pasien",
-  "Pengunjung",
-  "Lain-lain",
-].map((value) => ({ value, label: value }))
 
 const PATIENT_IMPACTS = [
   "Kematian",
@@ -79,6 +71,7 @@ const FALLBACK_DEPARTMENTS = [
 ].map((value) => ({ value, label: value }))
 
 export function FormSectionIncident({
+  control,
   register,
   errors,
   watch,
@@ -166,24 +159,7 @@ export function FormSectionIncident({
           required
           rows={5}
         />
-        <SelectField
-          disabled={disabled}
-          error={errors.initial_reporter_category?.message}
-          label="Orang Pertama yang Melaporkan"
-          name="initial_reporter_category"
-          options={INITIAL_REPORTER_CATEGORIES}
-          placeholder="-- Pilih Pelapor Pertama --"
-          register={register}
-          required
-        />
-        <TextField
-          disabled={disabled}
-          hint="Opsional — isi jika pelapor pertama bukan nakes."
-          label="Detail Pelapor Pertama"
-          name="initial_reporter_detail"
-          placeholder="Contoh: Petugas Kebersihan, Petugas Keamanan"
-          register={register}
-        />
+        <InitialReportersFields control={control} disabled={disabled} errors={errors} register={register} />
         <SelectField
           disabled={disabled}
           error={errors.incident_target?.message}

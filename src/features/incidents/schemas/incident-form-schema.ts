@@ -1,4 +1,32 @@
 import { z } from "zod"
+import { isNamelessLegacyReporter } from "../lib/initial-reporters"
+
+const initialReporterFields = z.object({
+  name: z.string(),
+  category: z.string().trim().min(1, "Kategori pelapor wajib dipilih"),
+  detail: z.string(),
+  legacy: z.boolean().optional(),
+})
+
+export const initialReporterSchema = initialReporterFields.refine((row) => row.name.trim().length > 0, {
+  message: "Nama/Identitas Pelapor wajib diisi",
+  path: ["name"],
+})
+
+export const initialReportersSchema = z.array(initialReporterFields)
+  .min(1, "Minimal satu pelapor wajib diisi")
+  .superRefine((rows, context) => {
+    if (isNamelessLegacyReporter(rows)) return
+    rows.forEach((row, index) => {
+      if (!row.name.trim()) {
+        context.addIssue({
+          code: "custom",
+          message: "Nama/Identitas Pelapor wajib diisi",
+          path: [index, "name"],
+        })
+      }
+    })
+  })
 
 export const incidentFormSchema = z
   .object({
@@ -34,10 +62,7 @@ export const incidentFormSchema = z
     incident_type: z.enum(["KNC", "KTC", "KTD", "SENTINEL"], {
       error: "Jenis insiden wajib dipilih",
     }),
-    initial_reporter_category: z
-      .string()
-      .min(1, "Orang pertama yang melaporkan insiden wajib dipilih"),
-    initial_reporter_detail: z.string().optional(),
+    initial_reporters: initialReportersSchema,
     incident_target: z.enum(
       ["PASIEN", "KARYAWAN_NAKES", "PENGUNJUNG", "PENDAMPING", "KELUARGA_PASIEN", "LAIN_LAIN"],
       { error: "Subjek terjadinya insiden wajib dipilih" },

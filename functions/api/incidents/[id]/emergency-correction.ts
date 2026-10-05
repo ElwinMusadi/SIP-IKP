@@ -1,6 +1,12 @@
 import type { CloudflareEnv } from "../../../../src/types/cloudflare-env"
 import { createAuditPreparedStatement } from "../../../_shared/audit"
-import type { IncidentReportRow } from "../../../_shared/incident-service"
+import {
+  firstReporterScalars,
+  parseInitialReporters,
+  resolveReportersFromRow,
+  serializeReporters,
+  type IncidentReportRow,
+} from "../../../_shared/incident-service"
 import { canEmergencyCorrect } from "../../../_shared/rbac"
 import type { RequestContextData } from "../../../_shared/request-context"
 import { jsonResponse, problemResponse } from "../../../_shared/response"
@@ -29,7 +35,20 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
   }
 
   const incidentId = typeof params.id === "string" ? params.id : (params.id[0] ?? "")
-  const report = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
+  const report = await env.DB.prepare(
+    `SELECT
+       id, report_number, status, created_by_user_id, reporter_name, reporter_role,
+       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
+       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
+       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+       initial_reporters,
+       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+       similar_incident_details, sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade,
+       risk_graded_at, high_risk_mitigation_notes, received_by_user_id, received_at, revision_reason,
+       pmkp_reviewed, pmkp_review_notes, row_version, created_at, updated_at, submitted_at, completed_at
+     FROM incident_reports WHERE id = ? LIMIT 1;`,
+  )
     .bind(incidentId)
     .first<IncidentReportRow>()
 
@@ -142,14 +161,55 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     fields.chronology !== undefined ? (fields.chronology as string) : report.chronology
   const updatedIncidentType =
     typeof fields.incident_type === "string" ? fields.incident_type : report.incident_type
-  const updatedReporterCat =
-    fields.initial_reporter_category !== undefined
-      ? (fields.initial_reporter_category as string)
-      : report.initial_reporter_category
-  const updatedReporterDetail =
+
+  // reporters: if initial_reporters supplied in fields, parse and sync; else keep existing
+  let updatedReportersJson: string | null = report.initial_reporters ?? null
+  let updatedReporterCat: string | null = report.initial_reporter_category
+  let updatedReporterDetail: string | null = report.initial_reporter_detail
+
+  if (fields.initial_reporters !== undefined) {
+    const parsed = parseInitialReporters(fields.initial_reporters ?? [], "submit")
+    if (!parsed.ok) {
+      return problemResponse(
+        {
+          status: 400,
+          code: "INVALID_REPORTERS",
+          title: "Data Pelapor Tidak Valid",
+          detail: "Format array initial_reporters tidak valid.",
+          instance: url.pathname,
+          errors: parsed.errors,
+        },
+        requestId,
+      )
+    }
+    updatedReportersJson = serializeReporters(parsed.reporters)
+    const scalars = firstReporterScalars(parsed.reporters)
+    updatedReporterCat = scalars.category
+    updatedReporterDetail = scalars.detail
+  } else if (
+    fields.initial_reporter_category !== undefined ||
     fields.initial_reporter_detail !== undefined
-      ? (fields.initial_reporter_detail as string)
-      : report.initial_reporter_detail
+  ) {
+    // Legacy scalar edit during emergency correction — sync to array
+    const existingReporters = resolveReportersFromRow(report)
+    const newCat =
+      fields.initial_reporter_category !== undefined
+        ? (fields.initial_reporter_category as string | null)
+        : report.initial_reporter_category
+    const newDetail =
+      fields.initial_reporter_detail !== undefined
+        ? (fields.initial_reporter_detail as string | null)
+        : report.initial_reporter_detail
+    updatedReporterCat = newCat
+    updatedReporterDetail = newDetail
+    const firstReporter = existingReporters[0]
+    if (report.initial_reporters != null && firstReporter) {
+      const updated = [...existingReporters]
+      updated[0] = { ...firstReporter, category: newCat ?? "", detail: newDetail }
+      updatedReportersJson = serializeReporters(updated)
+    }
+  }
+
   const updatedIncidentTarget =
     typeof fields.incident_target === "string" ? fields.incident_target : report.incident_target
   const updatedTargetOther =
@@ -189,9 +249,43 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
   const updatedRiskGrade =
     fields.risk_grade !== undefined ? (fields.risk_grade as string) : report.risk_grade
 
+  const snapshotReportersJson = serializeReporters(
+    resolveReportersFromRow({
+      initial_reporters: updatedReportersJson,
+      initial_reporter_category: updatedReporterCat,
+      initial_reporter_detail: updatedReporterDetail,
+    }),
+  )
+  const snapshot = await env.DB.prepare(
+    "SELECT snapshot_data FROM incident_submission_snapshots WHERE incident_id = ? LIMIT 1;",
+  )
+    .bind(incidentId)
+    .first<{ snapshot_data: string }>()
+  if (snapshot) {
+    let snapshotData: unknown
+    try {
+      snapshotData = JSON.parse(snapshot.snapshot_data)
+    } catch {
+      snapshotData = null
+    }
+    if (typeof snapshotData !== "object" || snapshotData === null || Array.isArray(snapshotData)) {
+      return problemResponse(
+        {
+          status: 409,
+          code: "INVALID_SUBMISSION_SNAPSHOT",
+          title: "Snapshot Laporan Tidak Valid",
+          detail:
+            "Snapshot laporan tersimpan tidak valid. Koreksi dibatalkan agar data asli tetap terjaga.",
+          instance: url.pathname,
+        },
+        requestId,
+      )
+    }
+  }
+
   const statements: D1PreparedStatement[] = []
 
-  // 1. Update incident_reports
+  // 1. Update incident_reports (preserve emergency workflow RBAC unchanged; add reporters sync)
   statements.push(
     env.DB.prepare(
       `UPDATE incident_reports SET
@@ -199,11 +293,11 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
         patient_age_category = ?, patient_gender = ?, patient_payer_type = ?,
         admission_datetime = ?, incident_datetime = ?, incident_title = ?,
         chronology = ?, incident_type = ?, initial_reporter_category = ?,
-        initial_reporter_detail = ?, incident_target = ?, incident_target_other = ?,
-        patient_care_type = ?, incident_location = ?, clinical_specialization = ?,
-        causing_unit = ?, patient_impact = ?, immediate_action_and_result = ?,
-        action_taken_by = ?, similar_incident_occurred = ?, overdue_reason = ?,
-        risk_grade = ?, row_version = ?, updated_at = ?
+        initial_reporter_detail = ?, initial_reporters = ?, incident_target = ?,
+        incident_target_other = ?, patient_care_type = ?, incident_location = ?,
+        clinical_specialization = ?, causing_unit = ?, patient_impact = ?,
+        immediate_action_and_result = ?, action_taken_by = ?, similar_incident_occurred = ?,
+        overdue_reason = ?, risk_grade = ?, row_version = ?, updated_at = ?
       WHERE id = ?`,
     ).bind(
       updatedPatientName,
@@ -219,6 +313,7 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
       updatedIncidentType,
       updatedReporterCat,
       updatedReporterDetail,
+      updatedReportersJson,
       updatedIncidentTarget,
       updatedTargetOther,
       updatedCareType,
@@ -242,7 +337,11 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     env.DB.prepare(
       `UPDATE incident_submission_snapshots SET
         patient_name = ?, medical_record_number = ?, incident_datetime = ?,
-        incident_type = ?, overdue_reason = ?, updated_at = ?
+        incident_type = ?, overdue_reason = ?, updated_at = ?,
+        snapshot_data = json_set(snapshot_data,
+          '$.initial_reporters', json(?),
+          '$.initial_reporter_category', ?,
+          '$.initial_reporter_detail', ?)
       WHERE incident_id = ?`,
     ).bind(
       updatedPatientName,
@@ -251,6 +350,9 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
       updatedIncidentType,
       updatedOverdueReason,
       nowIso,
+      snapshotReportersJson,
+      updatedReporterCat,
+      updatedReporterDetail,
       incidentId,
     ),
   )
@@ -269,7 +371,20 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
 
   await env.DB.batch(statements)
 
-  const updatedReport = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
+  const updatedReport = await env.DB.prepare(
+    `SELECT
+       id, report_number, status, created_by_user_id, reporter_name, reporter_role,
+       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
+       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
+       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+       initial_reporters,
+       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+       similar_incident_details, sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade,
+       risk_graded_at, high_risk_mitigation_notes, received_by_user_id, received_at, revision_reason,
+       pmkp_reviewed, pmkp_review_notes, row_version, created_at, updated_at, submitted_at, completed_at
+     FROM incident_reports WHERE id = ? LIMIT 1;`,
+  )
     .bind(incidentId)
     .first<IncidentReportRow>()
 

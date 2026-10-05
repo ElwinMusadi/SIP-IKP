@@ -1,5 +1,11 @@
 import type { CloudflareEnv } from "../../../src/types/cloudflare-env"
-import type { IncidentReportRow } from "../../_shared/incident-service"
+import {
+  firstReporterScalars,
+  parseInitialReporters,
+  resolveReportersFromRow,
+  serializeReporters,
+  type IncidentReportRow,
+} from "../../_shared/incident-service"
 import {
   canDeleteDraft,
   canEditDraft,
@@ -227,14 +233,62 @@ export const onRequestPatch: PagesFunction<CloudflareEnv, "id", RequestContextDa
     body.chronology !== undefined ? (body.chronology as string) : report.chronology
   const updatedIncidentType =
     typeof body.incident_type === "string" ? body.incident_type : report.incident_type
-  const updatedReporterCat =
-    body.initial_reporter_category !== undefined
-      ? (body.initial_reporter_category as string)
-      : report.initial_reporter_category
-  const updatedReporterDetail =
+
+  // initial_reporters array handling
+  // If body.initial_reporters is present, parse and validate it; otherwise keep existing DB state
+  let updatedReportersJson: string | null = report.initial_reporters ?? null
+  let updatedReporterCat: string | null = report.initial_reporter_category
+  let updatedReporterDetail: string | null = report.initial_reporter_detail
+
+  if (body.initial_reporters !== undefined) {
+    const parsed = parseInitialReporters(body.initial_reporters, "draft")
+    if (!parsed.ok) {
+      return problemResponse(
+        {
+          status: 400,
+          code: "INVALID_REPORTERS",
+          title: "Data Pelapor Tidak Valid",
+          detail: "Format array initial_reporters tidak valid.",
+          instance: url.pathname,
+          errors: parsed.errors,
+        },
+        requestId,
+      )
+    }
+    updatedReportersJson = serializeReporters(parsed.reporters)
+    const scalars = firstReporterScalars(parsed.reporters)
+    updatedReporterCat = scalars.category
+    updatedReporterDetail = scalars.detail
+  } else if (
+    body.initial_reporter_category !== undefined ||
     body.initial_reporter_detail !== undefined
-      ? (body.initial_reporter_detail as string)
-      : report.initial_reporter_detail
+  ) {
+    // Legacy scalar edit: sync to first element of existing array (or create a new one)
+    const existingReporters = resolveReportersFromRow(report)
+    const newCat =
+      body.initial_reporter_category !== undefined
+        ? (body.initial_reporter_category as string | null)
+        : report.initial_reporter_category
+    const newDetail =
+      body.initial_reporter_detail !== undefined
+        ? (body.initial_reporter_detail as string | null)
+        : report.initial_reporter_detail
+
+    updatedReporterCat = newCat
+    updatedReporterDetail = newDetail
+
+    const firstReporter = existingReporters[0]
+    if (report.initial_reporters != null && firstReporter) {
+      const updated = [...existingReporters]
+      updated[0] = { ...firstReporter, category: newCat ?? "", detail: newDetail }
+      updatedReportersJson = serializeReporters(updated)
+    } else {
+      // No existing array; only update scalars (JSON stays null for legacy records)
+      // This preserves the "no JSON column for untouched legacy rows" policy
+      updatedReportersJson = null
+    }
+  }
+
   const updatedIncidentTarget =
     typeof body.incident_target === "string" ? body.incident_target : report.incident_target
   const updatedTargetOther =
@@ -281,11 +335,11 @@ export const onRequestPatch: PagesFunction<CloudflareEnv, "id", RequestContextDa
       patient_age_category = ?, patient_gender = ?, patient_payer_type = ?,
       admission_datetime = ?, incident_datetime = ?, incident_title = ?,
       chronology = ?, incident_type = ?, initial_reporter_category = ?,
-      initial_reporter_detail = ?, incident_target = ?, incident_target_other = ?,
-      patient_care_type = ?, incident_location = ?, clinical_specialization = ?,
-      causing_unit = ?, patient_impact = ?, immediate_action_and_result = ?,
-      action_taken_by = ?, similar_incident_occurred = ?, similar_incident_details = ?,
-      overdue_reason = ?, row_version = ?, updated_at = ?
+      initial_reporter_detail = ?, initial_reporters = ?, incident_target = ?,
+      incident_target_other = ?, patient_care_type = ?, incident_location = ?,
+      clinical_specialization = ?, causing_unit = ?, patient_impact = ?,
+      immediate_action_and_result = ?, action_taken_by = ?, similar_incident_occurred = ?,
+      similar_incident_details = ?, overdue_reason = ?, row_version = ?, updated_at = ?
     WHERE id = ?`,
   )
     .bind(
@@ -304,6 +358,7 @@ export const onRequestPatch: PagesFunction<CloudflareEnv, "id", RequestContextDa
       updatedIncidentType,
       updatedReporterCat,
       updatedReporterDetail,
+      updatedReportersJson,
       updatedIncidentTarget,
       updatedTargetOther,
       updatedCareType,
@@ -322,7 +377,20 @@ export const onRequestPatch: PagesFunction<CloudflareEnv, "id", RequestContextDa
     )
     .run()
 
-  const updatedReport = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
+  const updatedReport = await env.DB.prepare(
+    `SELECT
+       id, report_number, status, created_by_user_id, reporter_name, reporter_role,
+       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
+       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
+       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+       initial_reporters,
+       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+       similar_incident_details, sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade,
+       risk_graded_at, high_risk_mitigation_notes, received_by_user_id, received_at, revision_reason,
+       pmkp_reviewed, pmkp_review_notes, row_version, created_at, updated_at, submitted_at, completed_at
+     FROM incident_reports WHERE id = ? LIMIT 1;`,
+  )
     .bind(incidentId)
     .first<IncidentReportRow>()
 
@@ -379,8 +447,7 @@ export const onRequestDelete: PagesFunction<CloudflareEnv, "id", RequestContextD
         status: 403,
         code: "FORBIDDEN",
         title: "Akses Ditolak",
-        detail:
-          "Hanya pembuat draf atau Administrator yang dapat menghapus laporan insiden.",
+        detail: "Hanya pembuat draf atau Administrator yang dapat menghapus laporan insiden.",
         instance: url.pathname,
       },
       requestId,

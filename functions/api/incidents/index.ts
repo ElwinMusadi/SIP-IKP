@@ -1,6 +1,9 @@
 import type { CloudflareEnv } from "../../../src/types/cloudflare-env"
 import { createAuditPreparedStatement } from "../../_shared/audit"
 import {
+  firstReporterScalars,
+  parseInitialReporters,
+  serializeReporters,
   validateMinimumDraft,
   type IncidentReportRow,
   type IncidentTarget,
@@ -40,6 +43,7 @@ export const onRequestGet: PagesFunction<CloudflareEnv, string, RequestContextDa
       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+      initial_reporters,
       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
       sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade, risk_graded_at, high_risk_mitigation_notes,
@@ -149,6 +153,34 @@ export const onRequestPost: PagesFunction<CloudflareEnv, string, RequestContextD
     )
   }
 
+  // Parse initial_reporters if provided (draft: shapes validated, empty strings allowed)
+  let reportersJson: string | null = null
+  let legacyCat: string | null =
+    typeof body.initial_reporter_category === "string" ? body.initial_reporter_category : null
+  let legacyDetail: string | null =
+    typeof body.initial_reporter_detail === "string" ? body.initial_reporter_detail : null
+
+  if (body.initial_reporters !== undefined) {
+    const parsed = parseInitialReporters(body.initial_reporters, "draft")
+    if (!parsed.ok) {
+      return problemResponse(
+        {
+          status: 400,
+          code: "INVALID_REPORTERS",
+          title: "Data Pelapor Tidak Valid",
+          detail: "Format array initial_reporters tidak valid.",
+          instance: url.pathname,
+          errors: parsed.errors,
+        },
+        requestId,
+      )
+    }
+    reportersJson = serializeReporters(parsed.reporters)
+    const scalars = firstReporterScalars(parsed.reporters)
+    legacyCat = scalars.category
+    legacyDetail = scalars.detail
+  }
+
   const user = auth.user
   const now = new Date().toISOString()
   const id = crypto.randomUUID()
@@ -160,9 +192,9 @@ export const onRequestPost: PagesFunction<CloudflareEnv, string, RequestContextD
       id, status, created_by_user_id, reporter_name, reporter_role, owning_unit_id,
       patient_name, medical_record_number, patient_room, patient_age_category, patient_gender,
       patient_payer_type, admission_datetime, incident_datetime, incident_timezone, incident_title,
-      chronology, incident_type, initial_reporter_category, initial_reporter_detail, incident_target,
-      incident_target_other, patient_care_type, incident_location, clinical_specialization, causing_unit,
-      patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+      chronology, incident_type, initial_reporter_category, initial_reporter_detail, initial_reporters,
+      incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+      causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
       similar_incident_details, row_version, created_at, updated_at
     ) VALUES (
       ?, 'DRAFT', ?, ?, ?, 'IBS',
@@ -170,7 +202,7 @@ export const onRequestPost: PagesFunction<CloudflareEnv, string, RequestContextD
       ?, ?, ?, 'Asia/Makassar', ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
-      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
       ?, 1, ?, ?
     )`,
   ).bind(
@@ -189,8 +221,9 @@ export const onRequestPost: PagesFunction<CloudflareEnv, string, RequestContextD
     typeof body.incident_title === "string" ? body.incident_title : null,
     typeof body.chronology === "string" ? body.chronology : null,
     validation.data.incident_type,
-    typeof body.initial_reporter_category === "string" ? body.initial_reporter_category : null,
-    typeof body.initial_reporter_detail === "string" ? body.initial_reporter_detail : null,
+    legacyCat,
+    legacyDetail,
+    reportersJson,
     incidentTarget,
     typeof body.incident_target_other === "string" ? body.incident_target_other : null,
     typeof body.patient_care_type === "string" ? body.patient_care_type : null,
@@ -217,7 +250,20 @@ export const onRequestPost: PagesFunction<CloudflareEnv, string, RequestContextD
 
   await env.DB.batch([insertReportStmt, auditStmt])
 
-  const createdReport = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
+  const createdReport = await env.DB.prepare(
+    `SELECT
+       id, report_number, status, created_by_user_id, reporter_name, reporter_role,
+       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
+       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
+       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+       initial_reporters,
+       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+       similar_incident_details, sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade,
+       risk_graded_at, high_risk_mitigation_notes, received_by_user_id, received_at, revision_reason,
+       pmkp_reviewed, pmkp_review_notes, row_version, created_at, updated_at, submitted_at, completed_at
+     FROM incident_reports WHERE id = ? LIMIT 1;`,
+  )
     .bind(id)
     .first<IncidentReportRow>()
 

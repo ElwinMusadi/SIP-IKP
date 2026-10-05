@@ -1,5 +1,205 @@
 import type { IncidentStatus } from "./rbac"
 
+// ============================================================
+// Initial Reporters Array Contract
+// ============================================================
+
+export interface InitialReporter {
+  name: string
+  category: string
+  detail?: string | null
+}
+
+/**
+ * Parse and validate an `initial_reporters` value from an API request body.
+ *
+ * Rules:
+ *  - undefined / absent → no change (caller decides to keep existing)
+ *  - null               → treated same as absent (no change)
+ *  - [] (explicit empty array) → INVALID at submit, valid at draft (empty is allowed in draft)
+ *  - non-array, non-null → INVALID shape
+ *  - array elements must be plain objects; each element must have name and category as strings
+ *    (draft: strings may be empty; submit: every name and category must be non-empty)
+ *
+ * Returns { ok: true, reporters } or { ok: false, errors: ValidationError[] }
+ */
+export function parseInitialReporters(
+  raw: unknown,
+  context: "draft" | "submit",
+): { ok: true; reporters: InitialReporter[] } | { ok: false; errors: ValidationError[] } {
+  const errors: ValidationError[] = []
+
+  // absent / null → caller treats as "no change"
+  if (raw === undefined || raw === null) {
+    return { ok: true, reporters: [] }
+  }
+
+  if (!Array.isArray(raw)) {
+    errors.push({
+      path: "initial_reporters",
+      code: "INVALID_TYPE",
+      message: "initial_reporters harus berupa array.",
+    })
+    return { ok: false, errors }
+  }
+
+  // Explicit [] on submit → invalid
+  if (raw.length === 0 && context === "submit") {
+    errors.push({
+      path: "initial_reporters",
+      code: "EMPTY_ARRAY",
+      message:
+        "initial_reporters tidak boleh array kosong saat mengirim laporan. Hapus field ini atau sertakan minimal satu pelapor.",
+    })
+    return { ok: false, errors }
+  }
+
+  const reporters: InitialReporter[] = []
+
+  for (let i = 0; i < raw.length; i++) {
+    const item: unknown = raw[i]
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      errors.push({
+        path: `initial_reporters[${String(i)}]`,
+        code: "INVALID_ELEMENT_TYPE",
+        message: `Elemen ke-${String(i + 1)} pada initial_reporters harus berupa objek.`,
+      })
+      continue
+    }
+
+    const obj = item as Record<string, unknown>
+    const name = typeof obj.name === "string" ? obj.name : null
+    const category = typeof obj.category === "string" ? obj.category : null
+    const detail =
+      obj.detail === undefined || obj.detail === null
+        ? null
+        : typeof obj.detail === "string"
+          ? obj.detail
+          : null
+
+    // name must be a string (may be empty in draft; required on new rows at submit)
+    if (name === null) {
+      errors.push({
+        path: `initial_reporters[${String(i)}].name`,
+        code: "INVALID_TYPE",
+        message: `Nama pada pelapor ke-${String(i + 1)} harus berupa string.`,
+      })
+    }
+
+    // category must be a non-null string
+    if (category === null) {
+      errors.push({
+        path: `initial_reporters[${String(i)}].category`,
+        code: "INVALID_TYPE",
+        message: `Kategori pada pelapor ke-${String(i + 1)} harus berupa string.`,
+      })
+    }
+
+    if (context === "submit") {
+      if (name !== null && name.trim() === "") {
+        errors.push({
+          path: `initial_reporters[${String(i)}].name`,
+          code: "REQUIRED",
+          message: `Nama pada pelapor ke-${String(i + 1)} wajib diisi saat mengirim.`,
+        })
+      }
+      if (category !== null && category.trim() === "") {
+        errors.push({
+          path: `initial_reporters[${String(i)}].category`,
+          code: "REQUIRED",
+          message: `Kategori pada pelapor ke-${String(i + 1)} wajib diisi saat mengirim.`,
+        })
+      }
+    }
+
+    // detail: if present in object but not a string, reject
+
+    if (obj.detail !== undefined && obj.detail !== null && typeof obj.detail !== "string") {
+      errors.push({
+        path: `initial_reporters[${String(i)}].detail`,
+        code: "INVALID_TYPE",
+        message: `Detail pada pelapor ke-${String(i + 1)} harus berupa string atau null.`,
+      })
+    }
+
+    if (name !== null && category !== null) {
+      reporters.push({ name, category, detail: detail ?? null })
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors }
+  }
+
+  return { ok: true, reporters }
+}
+
+/**
+ * Serialize InitialReporter[] to a JSON TEXT string for D1 storage.
+ */
+export function serializeReporters(reporters: InitialReporter[]): string {
+  return JSON.stringify(reporters)
+}
+
+/**
+ * Deserialize the `initial_reporters` TEXT column value.
+ * Returns parsed array on success, or null if the column value is null/absent.
+ * If JSON is malformed, falls back to null (caller will use scalar columns).
+ */
+export function deserializeReporters(raw: string | null | undefined): InitialReporter[] | null {
+  if (!raw) return null
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed as InitialReporter[]
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build the canonical reporters array for a given DB row.
+ * Prefers `initial_reporters` JSON column; falls back to scalar columns for legacy records.
+ * An explicit `[]` stored in DB is returned as-is (do NOT fall back to scalar when [] is explicit).
+ */
+export function resolveReportersFromRow(row: {
+  initial_reporters?: string | null
+  initial_reporter_category?: string | null
+  initial_reporter_detail?: string | null
+}): InitialReporter[] {
+  const fromJson = deserializeReporters(row.initial_reporters)
+
+  // If JSON column is present (even []), use it
+  if (fromJson !== null) {
+    return fromJson
+  }
+
+  // Legacy fallback: synthesise from scalar columns
+  const category = row.initial_reporter_category ?? null
+  const detail = row.initial_reporter_detail ?? null
+  if (category) {
+    return [{ name: "", category, detail }]
+  }
+  return []
+}
+
+/**
+ * Extract the first reporter's category and detail for scalar column sync.
+ */
+export function firstReporterScalars(reporters: InitialReporter[]): {
+  category: string | null
+  detail: string | null
+} {
+  const first = reporters[0]
+  if (!first) return { category: null, detail: null }
+  return {
+    category: first.category || null,
+    detail: first.detail ?? null,
+  }
+}
+
 /**
  * SLA MVP DEACTIVATION FLAG
  *
@@ -131,8 +331,12 @@ export interface IncidentReportRow {
   incident_title: string | null
   chronology: string | null
   incident_type: IncidentType
+  /** Legacy scalar — kept in sync with initial_reporters[0] */
   initial_reporter_category: string | null
+  /** Legacy scalar — kept in sync with initial_reporters[0] */
   initial_reporter_detail: string | null
+  /** JSON TEXT: serialized InitialReporter[]. NULL on legacy records without the column. */
+  initial_reporters: string | null
   incident_target: IncidentTarget
   incident_target_other: string | null
   patient_care_type: string | null
@@ -162,7 +366,15 @@ export interface IncidentReportRow {
   completed_at: string | null
 }
 
-export function validateMandatorySubmitFields(report: Partial<IncidentReportRow>): {
+export function validateMandatorySubmitFields(
+  report: Partial<IncidentReportRow>,
+  /**
+   * Callers may pass an already-resolved reporters array (from the incoming request body
+   * when it was supplied, or from the existing DB row).  When absent, the function resolves
+   * from the row's own columns.
+   */
+  resolvedReporters?: InitialReporter[],
+): {
   isValid: boolean
   errors: ValidationError[]
 } {
@@ -243,13 +455,38 @@ export function validateMandatorySubmitFields(report: Partial<IncidentReportRow>
       message: "Jenis insiden wajib dipilih (KNC, KTC, KTD, atau SENTINEL).",
     })
   }
-  if (!report.initial_reporter_category?.trim()) {
-    errors.push({
-      path: "initial_reporter_category",
-      code: "REQUIRED",
-      message: "Orang pertama yang melaporkan insiden wajib dipilih.",
-    })
+
+  // Only rows without JSON or an explicitly supplied array receive the legacy name exemption.
+  const isLegacyScalar = report.initial_reporters == null && resolvedReporters === undefined
+  if (isLegacyScalar) {
+    if (!report.initial_reporter_category?.trim()) {
+      errors.push({
+        path: "initial_reporters",
+        code: "REQUIRED",
+        message: "Orang pertama yang melaporkan insiden wajib dipilih.",
+      })
+    }
+  } else {
+    let rawReporters: unknown = resolvedReporters
+    if (report.initial_reporters != null) {
+      try {
+        rawReporters = JSON.parse(report.initial_reporters)
+      } catch {
+        errors.push({
+          path: "initial_reporters",
+          code: "INVALID_JSON",
+          message: "Data pelapor tersimpan bukan JSON yang valid.",
+        })
+        rawReporters = []
+      }
+    }
+    // JSON null is explicit data, not a legacy scalar row.
+    const parsed = parseInitialReporters(rawReporters ?? [], "submit")
+    if (!parsed.ok) {
+      errors.push(...parsed.errors)
+    }
   }
+
   if (!report.incident_target || !INCIDENT_TARGETS.includes(report.incident_target)) {
     errors.push({
       path: "incident_target",

@@ -1,4 +1,5 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer"
+import { normalizeInitialReporters } from "../lib/initial-reporters"
 
 import type {
   ActionItem,
@@ -273,7 +274,7 @@ export function IncidentPdfDocument({
     (report.status === "SIMPLE_INVESTIGATION" || report.status === "COMPLETED_BY_UNIT")
   const printTime = dateTime(printedAt || new Date().toISOString())
   const target = `${value(report.incident_target)}${report.incident_target_other ? ` (${report.incident_target_other})` : ""}`
-  const initialReporter = `${value(report.initial_reporter_category)}${report.initial_reporter_detail ? ` (${report.initial_reporter_detail})` : ""}`
+  const initialReporters = normalizeInitialReporters(report)
   const similarIncident = `${value(report.similar_incident_occurred)}${report.similar_incident_details ? ` (Detail: ${report.similar_incident_details})` : ""}`
   const patientName =
     "patient_name" in report
@@ -391,7 +392,17 @@ export function IncidentPdfDocument({
               {value(report.incident_title)}
             </DetailRow>
             <DetailRow label="4. Insiden Terjadi Pada (Sasaran)">{target}</DetailRow>
-            <DetailRow label="5. Orang Pertama Melaporkan">{initialReporter}</DetailRow>
+            <Text style={styles.sectionHeading} minPresenceAhead={35}>
+              5. Orang Pertama Melaporkan
+            </Text>
+            {initialReporters.length ? initialReporters.map((reporter, index) => (
+              <View key={index} style={{ padding: 4, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
+                <Text style={styles.strong} minPresenceAhead={20}>Pelapor {index + 1}</Text>
+                <Text>Nama/Identitas Pelapor: {reporter.name || "Tidak tercatat"}</Text>
+                <Text>Kategori: {value(reporter.category)}</Text>
+                <Text>Detail: {value(reporter.detail)}</Text>
+              </View>
+            )) : <Text style={{ padding: 4, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>-</Text>}
             <DetailRow label="6. Tempat / Kamar Operasi Kejadian">
               {value(report.incident_location)}
             </DetailRow>

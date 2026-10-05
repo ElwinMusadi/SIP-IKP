@@ -4,8 +4,10 @@ import {
   SLA_ENABLED,
   allocateReportNumber,
   calculateSlaStatus,
+  resolveReportersFromRow,
   validateMandatorySubmitFields,
   type IncidentReportRow,
+  type InitialReporter,
 } from "../../../_shared/incident-service"
 import { canSubmitReport } from "../../../_shared/rbac"
 import type { RequestContextData } from "../../../_shared/request-context"
@@ -35,7 +37,20 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
   }
 
   const incidentId = typeof params.id === "string" ? params.id : (params.id[0] ?? "")
-  const report = await env.DB.prepare("SELECT * FROM incident_reports WHERE id = ? LIMIT 1;")
+  const report = await env.DB.prepare(
+    `SELECT
+       id, report_number, status, created_by_user_id, reporter_name, reporter_role,
+       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
+       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
+       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+       initial_reporters,
+       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+       similar_incident_details, sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade,
+       risk_graded_at, high_risk_mitigation_notes, received_by_user_id, received_at, revision_reason,
+       pmkp_reviewed, pmkp_review_notes, row_version, created_at, updated_at, submitted_at, completed_at
+     FROM incident_reports WHERE id = ? LIMIT 1;`,
+  )
     .bind(incidentId)
     .first<IncidentReportRow>()
 
@@ -67,7 +82,10 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     )
   }
 
-  // 1. Validate all mandatory Form fields
+  // Resolve reporters: prefer JSON column, fall back to legacy scalars
+  const resolvedReporters: InitialReporter[] = resolveReportersFromRow(report)
+
+  // 1. Validate stored JSON strictly, exempting names only on genuine legacy scalar rows.
   const validation = validateMandatorySubmitFields(report)
   if (!validation.isValid) {
     return problemResponse(
@@ -117,8 +135,13 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
   const isResubmission = report.status === "REVISION_REQUIRED"
   const nextVersion = report.row_version + 1
 
+  // Do not materialize JSON array on submit for pure legacy records
+  const finalReportersJson: string | null = report.initial_reporters ?? null
+  const finalCat = report.initial_reporter_category ?? null
+  const finalDetail = report.initial_reporter_detail ?? null
+
   // 4. Atomic D1 Batch:
-  // a) Update incident_reports
+  // a) Update incident_reports — also write final reporters JSON + sync scalars
   const updateReportStmt = env.DB.prepare(
     `UPDATE incident_reports SET
       status = 'SUBMITTED',
@@ -126,6 +149,9 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
       submitted_at = ?,
       sla_deadline_utc = ?,
       is_overdue_sla = ?,
+      initial_reporters = ?,
+      initial_reporter_category = ?,
+      initial_reporter_detail = ?,
       row_version = ?,
       updated_at = ?
     WHERE id = ?`,
@@ -134,12 +160,15 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     nowIso,
     sla.deadlineUtc,
     sla.isOverdue ? 1 : 0,
+    finalReportersJson,
+    finalCat,
+    finalDetail,
     nextVersion,
     nowIso,
     incidentId,
   )
 
-  // b) Snapshot record
+  // b) Snapshot record — snapshot_data carries the full array (parsed object, not string)
   const snapshotId = crypto.randomUUID()
   const snapshotData = JSON.stringify({
     ...report,
@@ -148,6 +177,10 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
     submitted_at: nowIso,
     sla_deadline_utc: sla.deadlineUtc,
     is_overdue_sla: sla.isOverdue ? 1 : 0,
+    // Override with parsed array so snapshot consumers get the full structure
+    initial_reporters: resolvedReporters,
+    initial_reporter_category: finalCat,
+    initial_reporter_detail: finalDetail,
     submitted_by: {
       id: user.id,
       fullName: user.fullName,
@@ -211,7 +244,18 @@ export const onRequestPost: PagesFunction<CloudflareEnv, "id", RequestContextDat
   await env.DB.batch([updateReportStmt, snapshotStmt, auditStmt])
 
   const submittedReport = await env.DB.prepare(
-    "SELECT * FROM incident_reports WHERE id = ? LIMIT 1;",
+    `SELECT
+       id, report_number, status, created_by_user_id, reporter_name, reporter_role,
+       owning_unit_id, patient_name, medical_record_number, patient_room, patient_age_category,
+       patient_gender, patient_payer_type, admission_datetime, incident_datetime, incident_timezone,
+       incident_title, chronology, incident_type, initial_reporter_category, initial_reporter_detail,
+       initial_reporters,
+       incident_target, incident_target_other, patient_care_type, incident_location, clinical_specialization,
+       causing_unit, patient_impact, immediate_action_and_result, action_taken_by, similar_incident_occurred,
+       similar_incident_details, sla_deadline_utc, is_overdue_sla, overdue_reason, risk_grade,
+       risk_graded_at, high_risk_mitigation_notes, received_by_user_id, received_at, revision_reason,
+       pmkp_reviewed, pmkp_review_notes, row_version, created_at, updated_at, submitted_at, completed_at
+     FROM incident_reports WHERE id = ? LIMIT 1;`,
   )
     .bind(incidentId)
     .first<IncidentReportRow>()

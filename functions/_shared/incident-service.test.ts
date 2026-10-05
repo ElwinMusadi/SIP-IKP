@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   allocateReportNumber,
   calculateSlaStatus,
+  parseInitialReporters,
   validateInvestigationCompletion,
   validateMandatorySubmitFields,
   validateMinimumDraft,
@@ -104,6 +105,51 @@ describe("Incident Service & Domain Validation", () => {
       expect(result.errors).toHaveLength(0)
     })
 
+    it.each([
+      JSON.stringify([{ name: "", category: "Perawat" }]),
+      JSON.stringify([
+        { name: "Maria", category: "Perawat" },
+        { name: " ", category: "Dokter" },
+      ]),
+      JSON.stringify([{ name: "Maria", category: "" }]),
+      JSON.stringify([{ category: "Perawat" }]),
+      JSON.stringify([null]),
+      "[]",
+      "null",
+      "{}",
+      "not JSON",
+    ])("rejects explicit invalid reporters JSON %s despite legacy scalars", (initial_reporters) => {
+      const result = validateMandatorySubmitFields({ ...completeReport, initial_reporters })
+      expect(result.isValid).toBe(false)
+      expect(result.errors.some((error) => error.path.startsWith("initial_reporters"))).toBe(true)
+    })
+
+    it("requires names on an explicitly supplied array without a JSON column", () => {
+      const result = validateMandatorySubmitFields(completeReport, [
+        { name: "", category: "Perawat" },
+      ])
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({ path: "initial_reporters[0].name" }),
+      )
+    })
+
+    it("exempts a genuine null-JSON legacy scalar row from the reporter name requirement", () => {
+      expect(
+        validateMandatorySubmitFields({ ...completeReport, initial_reporters: null }).isValid,
+      ).toBe(true)
+    })
+
+    it("accepts named reporters in every JSON row", () => {
+      const result = validateMandatorySubmitFields({
+        ...completeReport,
+        initial_reporters: JSON.stringify([
+          { name: "Maria", category: "Perawat" },
+          { name: "Anton", category: "Dokter" },
+        ]),
+      })
+      expect(result.isValid).toBe(true)
+    })
+
     it("fails when patient demographics are missing", () => {
       const incomplete = { ...completeReport, patient_name: "" }
       const result = validateMandatorySubmitFields(incomplete)
@@ -184,6 +230,40 @@ describe("Incident Service & Domain Validation", () => {
       expect(result.isValid).toBe(false)
       expect(result.errors.some((e) => e.path === "recommendations")).toBe(true)
       expect(result.errors.some((e) => e.path === "actions")).toBe(true)
+    })
+  })
+
+  describe("Initial Reporters Array Logic", () => {
+    it("accepts valid array for draft", () => {
+      const input = [{ name: "", category: "Dokter" }]
+      const res = parseInitialReporters(input, "draft")
+      expect(res.ok).toBe(true)
+      if (res.ok) {
+        expect(res.reporters).toEqual([{ name: "", category: "Dokter", detail: null }])
+      }
+    })
+
+    it("requires non-empty name and category for submit", () => {
+      const input = [{ name: "   ", category: "Perawat", detail: "Lt 2" }]
+      const res = parseInitialReporters(input, "submit")
+      expect(res.ok).toBe(false)
+      if (!res.ok) {
+        expect(res.errors[0]?.code).toBe("REQUIRED")
+      }
+    })
+
+    it("rejects empty array on submit but allows on draft", () => {
+      expect(parseInitialReporters([], "draft").ok).toBe(true)
+      const res = parseInitialReporters([], "submit")
+      expect(res.ok).toBe(false)
+      if (!res.ok) {
+        expect(res.errors[0]?.code).toBe("EMPTY_ARRAY")
+      }
+    })
+
+    it("handles null/undefined gracefully", () => {
+      expect(parseInitialReporters(undefined, "draft").ok).toBe(true)
+      expect(parseInitialReporters(null, "submit").ok).toBe(true)
     })
   })
 

@@ -35,6 +35,7 @@ import {
 import { AuditTimelineView } from "../components/audit-timeline-view"
 import { EmergencyCorrectionDialog } from "../components/emergency-correction-dialog"
 import { HeadRoomReviewPanel } from "../components/head-room-review-panel"
+import { InitialReportersList } from "../components/initial-reporters-list"
 import { IncidentStatusBadge } from "../components/incident-status-badge"
 import { InvestigationWorksheet } from "../components/investigation-worksheet"
 import { PmkpReviewPanel } from "../components/pmkp-review-panel"
@@ -464,9 +465,7 @@ export function IncidentDetailPage() {
                     },
                     {
                       label: "Pelapor pertama",
-                      value: `${report.initial_reporter_category || "-"}${
-                        report.initial_reporter_detail ? ` (${report.initial_reporter_detail})` : ""
-                      }`,
+                      value: <InitialReportersList report={report} />,
                     },
                     { label: "Lokasi kejadian", value: report.incident_location || "-" },
                     { label: "Spesialisasi klinis", value: report.clinical_specialization || "-" },

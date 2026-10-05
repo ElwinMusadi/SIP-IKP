@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/shared/error-state"
 import { InlineLoader } from "@/components/shared/loading-states"
 import { Button } from "@/components/ui/button"
 import { fetchIncidentPrint } from "../api/incidents-api"
+import { InitialReportersList } from "../components/initial-reporters-list"
 import type {
   ActionItem,
   AuditRecord,
@@ -436,8 +437,7 @@ export function IncidentPrintPage() {
                   5. Orang Pertama Melaporkan
                 </td>
                 <td className="p-1.5">
-                  {report.initial_reporter_category || "-"}{" "}
-                  {report.initial_reporter_detail ? `(${report.initial_reporter_detail})` : ""}
+                  <InitialReportersList report={report} />
                 </td>
               </tr>
               <tr className="border-b border-slate-300 print:border-black">

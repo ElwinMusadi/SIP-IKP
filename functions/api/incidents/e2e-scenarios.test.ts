@@ -190,6 +190,7 @@ function createE2eDatabase() {
         },
         async run() {
           if (sql.includes("INSERT INTO incident_reports")) {
+            expect(boundParams).toHaveLength((sql.match(/\?/g) ?? []).length)
             const id = boundParams[0] as string
             incidents.set(id, {
               id,
@@ -212,20 +213,21 @@ function createE2eDatabase() {
               incident_type: boundParams[14],
               initial_reporter_category: boundParams[15],
               initial_reporter_detail: boundParams[16],
-              incident_target: boundParams[17],
-              incident_target_other: boundParams[18],
-              patient_care_type: boundParams[19],
-              incident_location: boundParams[20],
-              clinical_specialization: boundParams[21],
-              causing_unit: boundParams[22],
-              patient_impact: boundParams[23],
-              immediate_action_and_result: boundParams[24],
-              action_taken_by: boundParams[25],
-              similar_incident_occurred: boundParams[26],
-              similar_incident_details: boundParams[27],
+              initial_reporters: boundParams[17],
+              incident_target: boundParams[18],
+              incident_target_other: boundParams[19],
+              patient_care_type: boundParams[20],
+              incident_location: boundParams[21],
+              clinical_specialization: boundParams[22],
+              causing_unit: boundParams[23],
+              patient_impact: boundParams[24],
+              immediate_action_and_result: boundParams[25],
+              action_taken_by: boundParams[26],
+              similar_incident_occurred: boundParams[27],
+              similar_incident_details: boundParams[28],
               row_version: 1,
-              created_at: boundParams[28],
-              updated_at: boundParams[29],
+              created_at: boundParams[29],
+              updated_at: boundParams[30],
               report_number: null,
               submitted_at: null,
               completed_at: null,
@@ -294,8 +296,11 @@ function createE2eDatabase() {
                 inc.submitted_at = boundParams[1]
                 inc.sla_deadline_utc = boundParams[2]
                 inc.is_overdue_sla = boundParams[3]
-                inc.row_version = boundParams[4]
-                inc.updated_at = boundParams[5]
+                inc.initial_reporters = boundParams[4]
+                inc.initial_reporter_category = boundParams[5]
+                inc.initial_reporter_detail = boundParams[6]
+                inc.row_version = boundParams[7]
+                inc.updated_at = boundParams[8]
               } else if (sql.includes("status = 'UNDER_REVIEW'")) {
                 inc.status = "UNDER_REVIEW"
                 inc.received_by_user_id = boundParams[0]
@@ -346,20 +351,21 @@ function createE2eDatabase() {
                 inc.incident_type = boundParams[12]
                 inc.initial_reporter_category = boundParams[13]
                 inc.initial_reporter_detail = boundParams[14]
-                inc.incident_target = boundParams[15]
-                inc.incident_target_other = boundParams[16]
-                inc.patient_care_type = boundParams[17]
-                inc.incident_location = boundParams[18]
-                inc.clinical_specialization = boundParams[19]
-                inc.causing_unit = boundParams[20]
-                inc.patient_impact = boundParams[21]
-                inc.immediate_action_and_result = boundParams[22]
-                inc.action_taken_by = boundParams[23]
-                inc.similar_incident_occurred = boundParams[24]
-                inc.similar_incident_details = boundParams[25]
-                inc.overdue_reason = boundParams[26]
-                inc.row_version = boundParams[27]
-                inc.updated_at = boundParams[28]
+                inc.initial_reporters = boundParams[15]
+                inc.incident_target = boundParams[16]
+                inc.incident_target_other = boundParams[17]
+                inc.patient_care_type = boundParams[18]
+                inc.incident_location = boundParams[19]
+                inc.clinical_specialization = boundParams[20]
+                inc.causing_unit = boundParams[21]
+                inc.patient_impact = boundParams[22]
+                inc.immediate_action_and_result = boundParams[23]
+                inc.action_taken_by = boundParams[24]
+                inc.similar_incident_occurred = boundParams[25]
+                inc.similar_incident_details = boundParams[26]
+                inc.overdue_reason = boundParams[27]
+                inc.row_version = boundParams[28]
+                inc.updated_at = boundParams[29]
               } else if (sql.includes("patient_name = ?, medical_record_number = ?")) {
                 // Emergency correction
                 inc.patient_name = boundParams[0]
@@ -375,20 +381,21 @@ function createE2eDatabase() {
                 inc.incident_type = boundParams[10]
                 inc.initial_reporter_category = boundParams[11]
                 inc.initial_reporter_detail = boundParams[12]
-                inc.incident_target = boundParams[13]
-                inc.incident_target_other = boundParams[14]
-                inc.patient_care_type = boundParams[15]
-                inc.incident_location = boundParams[16]
-                inc.clinical_specialization = boundParams[17]
-                inc.causing_unit = boundParams[18]
-                inc.patient_impact = boundParams[19]
-                inc.immediate_action_and_result = boundParams[20]
-                inc.action_taken_by = boundParams[21]
-                inc.similar_incident_occurred = boundParams[22]
-                inc.overdue_reason = boundParams[23]
-                inc.risk_grade = boundParams[24]
-                inc.row_version = boundParams[25]
-                inc.updated_at = boundParams[26]
+                inc.initial_reporters = boundParams[13]
+                inc.incident_target = boundParams[14]
+                inc.incident_target_other = boundParams[15]
+                inc.patient_care_type = boundParams[16]
+                inc.incident_location = boundParams[17]
+                inc.clinical_specialization = boundParams[18]
+                inc.causing_unit = boundParams[19]
+                inc.patient_impact = boundParams[20]
+                inc.immediate_action_and_result = boundParams[21]
+                inc.action_taken_by = boundParams[22]
+                inc.similar_incident_occurred = boundParams[23]
+                inc.overdue_reason = boundParams[24]
+                inc.risk_grade = boundParams[25]
+                inc.row_version = boundParams[26]
+                inc.updated_at = boundParams[27]
               }
               return { meta: { changes: 1 } }
             }
@@ -435,10 +442,24 @@ function createE2eDatabase() {
               snap.incident_type = boundParams[3]
               snap.overdue_reason = boundParams[4]
               snap.updated_at = boundParams[5]
+              if (sql.includes("snapshot_data = json_set")) {
+                const snapshotData: unknown = JSON.parse(snap.snapshot_data as string)
+                const reporters: unknown = JSON.parse(boundParams[6] as string)
+                snap.snapshot_data = JSON.stringify({
+                  ...(snapshotData as Record<string, unknown>),
+                  initial_reporters: reporters,
+                  initial_reporter_category: boundParams[7],
+                  initial_reporter_detail: boundParams[8],
+                })
+              }
             }
             return { meta: { changes: 1 } }
           }
-          if (sql.includes("INSERT INTO audit_records") && sql.includes("SELECT") && sql.includes("WHERE EXISTS")) {
+          if (
+            sql.includes("INSERT INTO audit_records") &&
+            sql.includes("SELECT") &&
+            sql.includes("WHERE EXISTS")
+          ) {
             const guardIncidentId = boundParams[boundParams.length - 2] as string
             const guardVersion = boundParams[boundParams.length - 1] as number
             const inc = incidents.get(guardIncidentId)
@@ -1030,6 +1051,18 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
 
   it("PART K & L: Emergency Correction & Snapshot Synchronization", async () => {
     const { db, incidents, snapshots, auditRecords } = createE2eDatabase()
+    const originalSnapshot = {
+      submitted_by: { id: nakesA.user.id, fullName: nakesA.user.fullName, role: nakesA.user.role },
+      submitted_at: "2026-09-26T08:00:00.000Z",
+      chronology: "Original chronology",
+      initial_reporters: [{ name: "Original Reporter", category: "Perawat", detail: null }],
+      initial_reporter_category: "Perawat",
+      initial_reporter_detail: null,
+    }
+    const reporters = [
+      { name: "dr. Anton", category: "Dokter", detail: "Dokter IBS" },
+      { name: "Ns. Maria", category: "Perawat", detail: "Perawat IBS" },
+    ]
     incidents.set("inc_kl", {
       id: "inc_kl",
       status: "SUBMITTED",
@@ -1041,6 +1074,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
     })
     snapshots.set("inc_kl", {
       incident_id: "inc_kl",
+      snapshot_data: JSON.stringify(originalSnapshot),
       patient_name: "Original Name",
       medical_record_number: "EMERGENCY-01",
     })
@@ -1054,6 +1088,7 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
         body: JSON.stringify({
           reason: "Koreksi nomor rekam medis definitif dari rekam medis",
           medical_record_number: "MR-100200",
+          initial_reporters: reporters,
         }),
       }),
       db,
@@ -1065,6 +1100,18 @@ describe("Phase 09 Comprehensive End-to-End Scenarios", () => {
     // Synchronized: both incident and snapshot updated
     expect(incidents.get("inc_kl")?.medical_record_number).toBe("MR-100200")
     expect(snapshots.get("inc_kl")?.medical_record_number).toBe("MR-100200")
+    const snapshot = snapshots.get("inc_kl")
+    if (!snapshot || typeof snapshot.snapshot_data !== "string") {
+      throw new Error("Corrected snapshot missing")
+    }
+    const snapshotData: unknown = JSON.parse(snapshot.snapshot_data)
+    expect(snapshotData).toEqual({
+      ...originalSnapshot,
+      initial_reporters: reporters,
+      initial_reporter_category: "Dokter",
+      initial_reporter_detail: "Dokter IBS",
+    })
+    expect(snapshotData).not.toHaveProperty("severity_reference")
 
     // Exactly one EMERGENCY_CORRECTION event
     const events = auditRecords.filter((a) => a.event_type === "EMERGENCY_CORRECTION")

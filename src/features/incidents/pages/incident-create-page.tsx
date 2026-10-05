@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, type Path } from "react-hook-form"
 import {
   IconAlertTriangle,
   IconDeviceFloppy,
@@ -38,6 +38,7 @@ import { FormSectionIncident } from "../components/form-section-incident"
 import { FormSectionPatient } from "../components/form-section-patient"
 import { incidentFormSchema, type IncidentFormData } from "../schemas/incident-form-schema"
 import type { IncidentReport, MasterDataPayload } from "../types/incident"
+import { createInitialReporter, initialReportersPayload, initialReportersToForm } from "../lib/initial-reporters"
 
 function toDateTimeLocal(value: string | null): string {
   if (!value) return ""
@@ -60,8 +61,7 @@ function reportToFormData(report: IncidentReport): IncidentFormData {
     incident_title: report.incident_title ?? "",
     chronology: report.chronology ?? "",
     incident_type: report.incident_type,
-    initial_reporter_category: report.initial_reporter_category ?? "",
-    initial_reporter_detail: report.initial_reporter_detail ?? "",
+    initial_reporters: initialReportersToForm(report),
     incident_target: report.incident_target,
     incident_target_other: report.incident_target_other ?? "",
     patient_care_type: report.patient_care_type ?? "",
@@ -107,6 +107,7 @@ export function IncidentCreatePage() {
 
   const {
     register,
+    control,
     watch,
     getValues,
     reset,
@@ -123,6 +124,7 @@ export function IncidentCreatePage() {
       incident_target: "PASIEN",
       patient_gender: "LAKI_LAKI",
       similar_incident_occurred: "TIDAK",
+      initial_reporters: [createInitialReporter()],
     },
     mode: "onChange",
   })
@@ -224,8 +226,7 @@ export function IncidentCreatePage() {
         incident_title: values.incident_title || null,
         chronology: values.chronology || null,
         incident_type: values.incident_type,
-        initial_reporter_category: values.initial_reporter_category || null,
-        initial_reporter_detail: values.initial_reporter_detail || null,
+        ...initialReportersPayload(values.initial_reporters),
         incident_target: values.incident_target,
         incident_target_other: values.incident_target_other || null,
         patient_care_type: values.patient_care_type || null,
@@ -324,9 +325,10 @@ export function IncidentCreatePage() {
     if (!result.success) {
       const messages: string[] = []
       for (const issue of result.error.issues) {
-        const path = issue.path[0] as keyof IncidentFormData
+        const path = issue.path.join(".") as Path<IncidentFormData>
         setError(path, { message: issue.message })
-        messages.push(issue.message)
+        messages.push(issue.path[0] === "initial_reporters" && typeof issue.path[1] === "number"
+          ? `Pelapor ${(issue.path[1] + 1).toString()}: ${issue.message}` : issue.message)
       }
       setValidationSummary(messages)
       window.scrollTo({ top: 0, behavior: "smooth" })
@@ -465,6 +467,8 @@ export function IncidentCreatePage() {
         <FormSectionPatient errors={errors} masterData={masterData} register={register} setValue={setValue} watch={watch} />
 
         <FormSectionIncident
+          control={control}
+          disabled={isSubmitting}
           errors={errors}
           masterData={masterData}
           register={register}

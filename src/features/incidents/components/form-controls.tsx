@@ -78,15 +78,17 @@ export function TextField({
       </FieldLabel>
       <Input
         {...register(name)}
+        aria-describedby={error ? `${name}-error` : hint ? `${name}-hint` : undefined}
         aria-invalid={error ? true : undefined}
+        aria-required={required || undefined}
         className={controlHeight}
         disabled={disabled}
         id={name}
         placeholder={placeholder}
         type={type}
       />
-      {hint && !error && <FieldDescription>{hint}</FieldDescription>}
-      {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
+      {hint && !error && <FieldDescription id={`${name}-hint`}>{hint}</FieldDescription>}
+      {error && <FieldDescription className="text-destructive" id={`${name}-error`}>{error}</FieldDescription>}
     </Field>
   )
 }
@@ -142,6 +144,7 @@ export interface SelectOption {
 interface SelectFieldProps extends BaseFieldProps {
   options: SelectOption[]
   placeholder?: string | undefined
+  value?: string | undefined
 }
 
 export function SelectField({
@@ -155,6 +158,7 @@ export function SelectField({
   options,
   placeholder,
   className,
+  value,
 }: SelectFieldProps) {
   return (
     <Field className={className} data-invalid={error ? true : undefined}>
@@ -165,13 +169,16 @@ export function SelectField({
       <div className="relative">
         <select
           {...register(name)}
+          aria-describedby={error ? `${name}-error` : hint ? `${name}-hint` : undefined}
           aria-invalid={error ? true : undefined}
+          aria-required={required || undefined}
           className={cn(
             "w-full appearance-none rounded-lg border border-input bg-transparent px-2.5 py-1 pr-8 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30",
             controlHeight,
           )}
           disabled={disabled}
           id={name}
+          value={value}
         >
           {placeholder !== undefined && <option value="">{placeholder}</option>}
           {options.map((option) => (
@@ -185,8 +192,8 @@ export function SelectField({
           className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
         />
       </div>
-      {hint && !error && <FieldDescription>{hint}</FieldDescription>}
-      {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
+      {hint && !error && <FieldDescription id={`${name}-hint`}>{hint}</FieldDescription>}
+      {error && <FieldDescription className="text-destructive" id={`${name}-error`}>{error}</FieldDescription>}
     </Field>
   )
 }

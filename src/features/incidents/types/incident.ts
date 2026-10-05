@@ -67,6 +67,12 @@ export interface AuditRecord {
   requestId: string
 }
 
+export interface InitialReporter {
+  name: string
+  category: string
+  detail: string
+}
+
 export interface IncidentReport {
   id: string
   report_number: string | null
@@ -89,6 +95,7 @@ export interface IncidentReport {
   incident_type: IncidentType
   initial_reporter_category: string | null
   initial_reporter_detail: string | null
+  initial_reporters?: string | InitialReporter[] | null
   incident_target: IncidentTarget
   incident_target_other: string | null
   patient_care_type: string | null
