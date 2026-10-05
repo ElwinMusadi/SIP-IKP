@@ -47,6 +47,8 @@
   --color-risk-yellow-foreground: var(--risk-yellow-foreground);
   --color-risk-red: var(--risk-red);
   --color-risk-red-foreground: var(--risk-red-foreground);
+  --color-severity-orange: var(--severity-orange);
+  --color-severity-orange-foreground: var(--severity-orange-foreground);
   --color-status-neutral: var(--status-neutral);
   --color-status-neutral-foreground: var(--status-neutral-foreground);
   --color-status-info: var(--status-info);
@@ -107,6 +109,8 @@
   --risk-yellow-foreground: oklch(0.34 0.07 70);
   --risk-red: oklch(0.94 0.04 25);
   --risk-red-foreground: oklch(0.38 0.16 27);
+  --severity-orange: oklch(0.94 0.065 55);
+  --severity-orange-foreground: oklch(0.36 0.1 50);
   --status-neutral: oklch(0.955 0.004 228);
   --status-neutral-foreground: oklch(0.42 0.014 228);
   --status-info: oklch(0.93 0.04 235);
@@ -159,6 +163,8 @@
   --risk-yellow-foreground: oklch(0.95 0.075 88);
   --risk-red: oklch(0.39 0.13 27);
   --risk-red-foreground: oklch(0.94 0.04 25);
+  --severity-orange: oklch(0.37 0.085 50);
+  --severity-orange-foreground: oklch(0.94 0.065 55);
   --status-neutral: oklch(0.3 0.008 228);
   --status-neutral-foreground: oklch(0.8 0.01 228);
   --status-info: oklch(0.34 0.06 240);
